@@ -32,13 +32,13 @@
 
   function photosHtml(photosData) {
     if (!photosData || !photosData.length) return '';
-    const imgs = photosData.slice(0, 4).map((u) => `<img loading="lazy" src="${u}">`).join('');
+    const imgs = photosData.slice(0, 4).map((u) => `<img loading="lazy" src="${esc(u)}">`).join('');
     return `<div class="photos n${Math.min(photosData.length, 4)}">${imgs}</div>`;
   }
 
   function videoHtml(d) {
     if (!d.hasVideo) return '';
-    const poster = d.videoPosterData ? `<img src="${d.videoPosterData}">` : '';
+    const poster = d.videoPosterData ? `<img src="${esc(d.videoPosterData)}">` : '';
     const link = d.permalink ? ` <a href="${esc(d.permalink)}" target="_blank" rel="noopener">打开原文观看</a>` : '';
     return `<div class="video">${poster}<div class="vtag">🎬 视频内容 ·${link}</div></div>`;
   }
@@ -59,7 +59,7 @@
   }
 
   function avatar(d, cls) {
-    return d.avatarData ? `<img class="ava ${cls || ''}" src="${d.avatarData}">` : `<span class="ava ${cls || ''}"></span>`;
+    return d.avatarData ? `<img class="ava ${cls || ''}" src="${esc(d.avatarData)}">` : `<span class="ava ${cls || ''}"></span>`;
   }
 
   function quoteHtml(q) {

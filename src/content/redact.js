@@ -23,13 +23,17 @@
         const m = t.match(/^\/(.+)\/([a-z]*)$/i);
         try {
           if (m) {
-            const flags = m[2].includes('g') ? m[2] : m[2] + 'g';
-            out.push(new RegExp(m[1], flags));
+            // 去重 flags 并确保带 g（例如误写 /foo/gg 会导致 RegExp 抛错）
+            const uniq = [...new Set(m[2].split(''))];
+            if (!uniq.includes('g')) uniq.push('g');
+            out.push(new RegExp(m[1], uniq.join('')));
           } else {
             out.push(new RegExp(escapeRe(t), 'g'));
           }
         } catch (_) {
-          out.push(new RegExp(escapeRe(t), 'g'));
+          // 正则无效：退回按「内部模式」字面量匹配，而不是把整段 /.../ 当字面量
+          // （否则用户想屏蔽的词会静默漏网，对安全功能是危险的）
+          out.push(new RegExp(escapeRe(m ? m[1] : t), 'g'));
         }
       });
     if (includePII) {

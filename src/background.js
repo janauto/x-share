@@ -91,10 +91,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   return true; // 异步 sendResponse
 });
 
+const IMG_MIME = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif'];
+
 async function fetchImageAsDataUrl(url) {
   const resp = await fetch(url, { credentials: 'omit' });
   if (!resp.ok) throw new Error(`图片下载失败 ${resp.status}`);
-  const contentType = resp.headers.get('content-type') || 'image/jpeg';
+  // 不能信任远端 Content-Type：它会原样进 data URL，再进网页 <img src>，
+  // 带引号/尖括号的构造串可越权注入。只接受白名单 MIME，否则退回 jpeg。
+  const raw = (resp.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  const contentType = IMG_MIME.includes(raw) ? raw : 'image/jpeg';
   const buf = await resp.arrayBuffer();
   return `data:${contentType};base64,${arrayBufferToBase64(buf)}`;
 }

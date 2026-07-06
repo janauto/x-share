@@ -254,6 +254,8 @@
 
     const harvest = new Map();
     const startY = window.scrollY;
+    // 收尾（解锁 / 重挂 observer / 关遮罩）必须在 finally 里，
+    // 否则收割中任一处抛错会让 generating 卡死、遮罩不消、整个选择模式冻结。
     try {
       let stagnant = 0;
       for (let i = 0; i < 25 && stagnant < 3; i++) {
@@ -270,23 +272,24 @@
         window.scrollBy(0, Math.round(window.innerHeight * 0.9));
         await sleep(550);
       }
+
+      const ranked = [...harvest.values()].sort(
+        (a, b) => (b.engagement ? b.engagement.score : 0) - (a.engagement ? a.engagement.score : 0)
+      );
+      state.selected.clear();
+      ranked.slice(0, N).forEach((d) => state.selected.set(d.id, d));
+      if (!harvest.size) toast('没抓到评论，可能页面还没加载出回复');
+      else toast(`已按热度自动选中 ${state.selected.size} 条，可继续手动增减`);
+    } catch (e) {
+      toast('自动选热门失败：' + ((e && e.message) || e));
     } finally {
       window.scrollTo(0, startY);
+      state.generating = false;
+      attachObserver();
+      decorateArticles();
+      updateBar();
+      hideOverlay();
     }
-
-    const ranked = [...harvest.values()].sort(
-      (a, b) => (b.engagement ? b.engagement.score : 0) - (a.engagement ? a.engagement.score : 0)
-    );
-    state.selected.clear();
-    ranked.slice(0, N).forEach((d) => state.selected.set(d.id, d));
-
-    state.generating = false;
-    attachObserver();
-    decorateArticles();
-    updateBar();
-    hideOverlay();
-    if (!harvest.size) toast('没抓到评论，可能页面还没加载出回复');
-    else toast(`已按热度自动选中 ${state.selected.size} 条，可继续手动增减`);
   }
 
   // ---------- 生成流程 ----------
