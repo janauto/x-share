@@ -1,5 +1,6 @@
 // 从 x.com 已渲染的 DOM 里提取推文数据。
 // 依赖 X 相对稳定的 data-testid 锚点（tweet / tweetText / tweetPhoto / User-Name）。
+// 长文/Articles 偶尔不会暴露 tweetText，需退回到 X Article 或可见正文节点提取。
 // X 改版导致失效时，优先检查这里的选择器。
 
 (() => {
@@ -51,6 +52,81 @@
     const last = out[out.length - 1];
     if (last && last.type === type) last.text += text;
     else out.push({ type, text });
+  }
+
+  function isInsideQuote(el, quoteEl) {
+    return !!(quoteEl && quoteEl.contains(el));
+  }
+
+  function isTextNoise(el, quoteEl) {
+    if (isInsideQuote(el, quoteEl)) return true;
+    if (el.closest('[data-testid="User-Name"], [data-testid="tweetPhoto"], video')) return true;
+    if (el.closest('button, [role="button"], [role="menu"], [data-testid="caret"]')) return true;
+    if (el.querySelector('time')) return true;
+    return false;
+  }
+
+  function normalizedText(el) {
+    return inlineText(el).replace(/\u00a0/g, ' ').trim();
+  }
+
+  function meaningfulText(el) {
+    const t = normalizedText(el);
+    if (!t) return '';
+    if (/^(show more|显示更多|查看更多|展开|更多)$/i.test(t)) return '';
+    return t;
+  }
+
+  function findFirstOutside(scope, selector, quoteEl) {
+    for (const el of scope.querySelectorAll(selector)) {
+      if (!isInsideQuote(el, quoteEl)) return el;
+    }
+    return null;
+  }
+
+  function visibleText(el) {
+    return (el.innerText || normalizedText(el)).replace(/\u00a0/g, ' ').trim();
+  }
+
+  function pushTextBlock(out, text) {
+    const t = String(text || '').trim();
+    if (!t) return;
+    if (out.length) pushSeg(out, 'text', '\n\n');
+    pushSeg(out, 'text', t);
+  }
+
+  // X Articles / longform：正文不在 tweetText，而在 twitterArticleRichTextView。
+  function articleTextSegments(scope, quoteEl) {
+    const articleRoot = findFirstOutside(scope, '[data-testid="twitterArticleReadView"]', quoteEl);
+    if (!articleRoot) return [];
+
+    const out = [];
+    const title = findFirstOutside(articleRoot, '[data-testid="twitter-article-title"]', quoteEl);
+    const body = findFirstOutside(
+      articleRoot,
+      '[data-testid="twitterArticleRichTextView"], [data-testid="longformRichTextComponent"]',
+      quoteEl
+    );
+
+    pushTextBlock(out, title && visibleText(title));
+    pushTextBlock(out, body && visibleText(body));
+    return out;
+  }
+
+  // X 长文/Articles 有时不再给正文容器打 data-testid="tweetText"。
+  // 退回到带 lang 的可见正文节点，并排除用户名、媒体、按钮、引用推文等区域。
+  function fallbackTextSegments(scope, quoteEl) {
+    const raw = [...scope.querySelectorAll('div[lang], span[lang]')]
+      .filter((el) => !isTextNoise(el, quoteEl))
+      .filter((el) => meaningfulText(el));
+
+    const blocks = raw.filter((el) => !raw.some((other) => other !== el && other.contains(el)));
+    const out = [];
+    blocks.forEach((el) => {
+      if (out.length) pushSeg(out, 'text', '\n\n');
+      walkSegments(el, out);
+    });
+    return out;
   }
 
   // 引用推文容器：article 内可导航的 div[role="link"]，且里面有推文内容
@@ -138,11 +214,13 @@
     const quoteEl = isQuote ? null : findQuote(scope);
 
     let textEl = null;
-    for (const el of scope.querySelectorAll('[data-testid="tweetText"]')) {
+    for (const el of scope.querySelectorAll('[data-testid="tweetText"], [data-testid="noteTweetText"], [data-testid="articleText"]')) {
       if (!quoteEl || !quoteEl.contains(el)) { textEl = el; break; }
     }
-    const segments = [];
+    let segments = [];
     if (textEl) walkSegments(textEl, segments);
+    if (!segments.length) segments = articleTextSegments(scope, quoteEl);
+    if (!segments.length) segments = fallbackTextSegments(scope, quoteEl);
     const plainText = segments.map((s) => s.text).join('');
 
     let name = '', handle = '';
