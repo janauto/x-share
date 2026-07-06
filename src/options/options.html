@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>X 转发卡片 · 设置</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    max-width: 520px;
+    margin: 40px auto;
+    padding: 0 20px;
+    color: #0f1419;
+  }
+  h1 { font-size: 20px; }
+  .row { margin: 20px 0; }
+  label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+  input[type="text"], input[type="password"] {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #cfd9de;
+    border-radius: 8px;
+    font-size: 14px;
+    box-sizing: border-box;
+  }
+  .check { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; cursor: pointer; }
+  .hint { font-size: 12.5px; color: #536471; margin-top: 6px; line-height: 1.5; }
+  button {
+    background: #1d9bf0;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  button.sec { background: #eff3f4; color: #0f1419; }
+  button:hover { opacity: 0.9; }
+  #status { font-size: 13px; margin-left: 10px; }
+  #status.ok { color: #00ba7c; }
+  #status.err { color: #f4212e; }
+</style>
+</head>
+<body>
+  <h1>X 转发卡片 · 设置</h1>
+
+  <div class="row">
+    <label for="apiKey">DeepSeek API Key</label>
+    <input type="password" id="apiKey" placeholder="sk-...">
+    <div class="hint">在 platform.deepseek.com 注册后创建。Key 只保存在你本机的浏览器里，不会上传到任何地方。</div>
+  </div>
+
+  <div class="row">
+    <label for="apiBase">API 地址</label>
+    <input type="text" id="apiBase" placeholder="https://api.deepseek.com">
+    <div class="hint">默认 DeepSeek。换成其他 OpenAI 兼容服务时，需同时在 manifest.json 的 host_permissions 里加上对应域名并重新加载扩展。</div>
+  </div>
+
+  <div class="row">
+    <label for="model">模型</label>
+    <input type="text" id="model" placeholder="deepseek-chat">
+  </div>
+
+  <div class="row">
+    <label class="check">
+      <input type="checkbox" id="translateDefault" checked>
+      生成卡片时默认勾选「附中文翻译」
+    </label>
+  </div>
+
+  <div class="row">
+    <button id="save">保存</button>
+    <button id="test" class="sec">测试翻译</button>
+    <span id="status"></span>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
