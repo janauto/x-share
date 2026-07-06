@@ -6,23 +6,27 @@
 <style>
   body {
     font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
-    max-width: 520px;
+    max-width: 560px;
     margin: 40px auto;
-    padding: 0 20px;
+    padding: 0 20px 60px;
     color: #0f1419;
   }
   h1 { font-size: 20px; }
-  .row { margin: 20px 0; }
+  h2 { font-size: 16px; margin: 32px 0 0; padding-top: 20px; border-top: 1px solid #eff3f4; }
+  .row { margin: 16px 0; }
   label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px; }
-  input[type="text"], input[type="password"] {
+  input[type="text"], input[type="password"], textarea, select {
     width: 100%;
     padding: 10px 12px;
     border: 1px solid #cfd9de;
     border-radius: 8px;
     font-size: 14px;
     box-sizing: border-box;
+    font-family: inherit;
   }
-  .check { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; cursor: pointer; }
+  textarea { min-height: 84px; resize: vertical; line-height: 1.5; }
+  .check { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; cursor: pointer; margin-bottom: 0; }
+  .check input { width: auto; }
   .hint { font-size: 12.5px; color: #536471; margin-top: 6px; line-height: 1.5; }
   button {
     background: #1d9bf0;
@@ -39,36 +43,77 @@
   #status { font-size: 13px; margin-left: 10px; }
   #status.ok { color: #00ba7c; }
   #status.err { color: #f4212e; }
+  .actions { position: sticky; bottom: 0; background: #fff; padding: 16px 0; border-top: 1px solid #eff3f4; margin-top: 24px; }
 </style>
 </head>
 <body>
   <h1>X 转发卡片 · 设置</h1>
 
+  <h2>翻译</h2>
   <div class="row">
     <label for="apiKey">DeepSeek API Key</label>
     <input type="password" id="apiKey" placeholder="sk-...">
-    <div class="hint">在 platform.deepseek.com 注册后创建。Key 只保存在你本机的浏览器里，不会上传到任何地方。</div>
+    <div class="hint">在 platform.deepseek.com 注册后创建。Key 只保存在你本机的浏览器里，不会上传到任何地方。翻译与「模型屏蔽」都用它。</div>
   </div>
-
   <div class="row">
     <label for="apiBase">API 地址</label>
     <input type="text" id="apiBase" placeholder="https://api.deepseek.com">
     <div class="hint">默认 DeepSeek。换成其他 OpenAI 兼容服务时，需同时在 manifest.json 的 host_permissions 里加上对应域名并重新加载扩展。</div>
   </div>
-
   <div class="row">
     <label for="model">模型</label>
     <input type="text" id="model" placeholder="deepseek-chat">
   </div>
-
   <div class="row">
-    <label class="check">
-      <input type="checkbox" id="translateDefault" checked>
-      生成卡片时默认勾选「附中文翻译」
-    </label>
+    <label class="check"><input type="checkbox" id="translateDefault" checked> 生成时默认勾选「附中文翻译」</label>
   </div>
 
+  <h2>敏感内容屏蔽 / 打码</h2>
   <div class="row">
+    <label class="check"><input type="checkbox" id="redactEnabled"> 生成时默认勾选「敏感打码」</label>
+    <div class="hint">开启后，会按下面的方式屏蔽敏感文字，避免转发到微信时触发审核/封号。生成时仍可在操作栏临时开关。</div>
+  </div>
+  <div class="row">
+    <label for="redactMode">屏蔽方式</label>
+    <select id="redactMode">
+      <option value="rules">规则匹配（本地正则，快、免费、离线）</option>
+      <option value="model">模型匹配（调 LLM 智能识别，需 API Key）</option>
+    </select>
+  </div>
+  <div class="row">
+    <label for="redactTerms">屏蔽词表（规则模式）</label>
+    <textarea id="redactTerms" placeholder="一行一个词，或用 /正则/ 形式&#10;例如：&#10;某敏感词&#10;/\d{6}验证码/"></textarea>
+    <div class="hint">普通词按字面屏蔽；用 <code>/pattern/flags</code> 包裹按正则处理。本扩展不内置任何政治敏感词，需你自行填写。命中处用 █ 覆盖。</div>
+  </div>
+  <div class="row">
+    <label class="check"><input type="checkbox" id="redactPII"> 额外屏蔽个人信息（手机号 / 邮箱 / 长数字）</label>
+  </div>
+  <div class="row">
+    <label class="check"><input type="checkbox" id="redactImages"> 同时给图片打马赛克（像素化）</label>
+  </div>
+
+  <h2>网页发布后端（「生成网页」用）</h2>
+  <div class="row">
+    <label for="publishTarget">发布方式</label>
+    <select id="publishTarget">
+      <option value="none">不发布（只下载 HTML / 新标签预览）</option>
+      <option value="gist">GitHub Gist（自动，无需服务器）</option>
+      <option value="custom">自定义服务器（POST 到你的端点）</option>
+    </select>
+    <div class="hint">⚠️ GitHub / gist 在中国大陆多不可访问，适合非墙内接收者或存档。境内可访问需自建香港服务器（免备案），用「自定义服务器」。</div>
+  </div>
+  <div class="row">
+    <label for="gistToken">GitHub Token（Gist 方式）</label>
+    <input type="password" id="gistToken" placeholder="ghp_...（需 gist 权限）">
+    <div class="hint">在 github.com/settings/tokens 创建，勾选 <code>gist</code> 权限即可。仅存本机。</div>
+  </div>
+  <div class="row">
+    <label for="publishEndpoint">自定义服务器地址（自定义方式）</label>
+    <input type="text" id="publishEndpoint" placeholder="https://你的域名/api/publish">
+    <div class="hint">扩展会 POST <code>{ html }</code>，期望返回 <code>{ url }</code>。需在 manifest.json 的 host_permissions 里加上该域名并重新加载扩展。</div>
+  </div>
+
+  <div class="actions">
     <button id="save">保存</button>
     <button id="test" class="sec">测试翻译</button>
     <span id="status"></span>

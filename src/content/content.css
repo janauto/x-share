@@ -70,7 +70,10 @@ article.xs-selected {
   z-index: 100000;
   display: flex;
   align-items: center;
-  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px 12px;
+  max-width: 94vw;
   background: #0f1419;
   color: #fff;
   border-radius: 16px;
@@ -86,6 +89,17 @@ article.xs-selected {
   font-size: 13.5px;
   color: #e7e9ea;
 }
+.xs-barcount { font-weight: 700; white-space: nowrap; }
+.xs-autowrap { display: flex; align-items: center; gap: 6px; color: #e7e9ea; font-size: 13.5px; }
+.xs-num {
+  width: 46px;
+  padding: 6px 6px;
+  border: none;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 13px;
+  font-family: inherit;
+}
 
 .xs-btn {
   border: none;
@@ -98,6 +112,8 @@ article.xs-selected {
 }
 .xs-btn.pri { background: #1d9bf0; color: #fff; }
 .xs-btn.pri:hover { background: #1a8cd8; }
+.xs-btn.pri2 { background: #00ba7c; color: #fff; }
+.xs-btn.pri2:hover { background: #00a56e; }
 .xs-btn.sec { background: #273340; color: #e7e9ea; }
 .xs-btn:disabled { opacity: 0.5; cursor: default; }
 
@@ -175,14 +191,27 @@ article.xs-selected {
 .xs-modal .pf {
   padding: 14px 20px;
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: center;
 }
+.xs-modal .pf a.xs-btn { text-decoration: none; display: inline-block; }
 .xs-modal .status {
   font-size: 12.5px;
   color: #536471;
   margin-left: auto;
+  word-break: break-all;
+  max-width: 100%;
 }
+.xs-modal .pweb {
+  padding: 18px 20px;
+  font-size: 14px;
+  color: #0f1419;
+  line-height: 1.7;
+  background: #f7f9f9;
+}
+.xs-modal .pweb p { margin: 0 0 8px; }
+.xs-modal .pweb .hint { color: #536471; font-size: 12.5px; }
 
 .xs-toast {
   position: fixed;

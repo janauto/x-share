@@ -3,6 +3,14 @@ const DEFAULTS = {
   apiBase: 'https://api.deepseek.com',
   model: 'deepseek-chat',
   translateDefault: true,
+  redactEnabled: false,
+  redactMode: 'rules',
+  redactTerms: '',
+  redactPII: false,
+  redactImages: false,
+  publishTarget: 'none',
+  gistToken: '',
+  publishEndpoint: '',
 };
 
 const $ = (id) => document.getElementById(id);
@@ -19,6 +27,14 @@ async function load() {
   $('apiBase').value = c.apiBase;
   $('model').value = c.model;
   $('translateDefault').checked = c.translateDefault !== false;
+  $('redactEnabled').checked = !!c.redactEnabled;
+  $('redactMode').value = c.redactMode || 'rules';
+  $('redactTerms').value = c.redactTerms || '';
+  $('redactPII').checked = !!c.redactPII;
+  $('redactImages').checked = !!c.redactImages;
+  $('publishTarget').value = c.publishTarget || 'none';
+  $('gistToken').value = c.gistToken || '';
+  $('publishEndpoint').value = c.publishEndpoint || '';
 }
 
 async function save() {
@@ -27,6 +43,14 @@ async function save() {
     apiBase: $('apiBase').value.trim() || DEFAULTS.apiBase,
     model: $('model').value.trim() || DEFAULTS.model,
     translateDefault: $('translateDefault').checked,
+    redactEnabled: $('redactEnabled').checked,
+    redactMode: $('redactMode').value,
+    redactTerms: $('redactTerms').value,
+    redactPII: $('redactPII').checked,
+    redactImages: $('redactImages').checked,
+    publishTarget: $('publishTarget').value,
+    gistToken: $('gistToken').value.trim(),
+    publishEndpoint: $('publishEndpoint').value.trim(),
   });
   setStatus('已保存 ✓', true);
 }

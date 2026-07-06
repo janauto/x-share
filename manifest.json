@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "X 转发卡片",
-  "version": "0.1.0",
-  "description": "把推文（含中文翻译和你勾选的评论）生成一张双语长图，方便转发到微信",
+  "version": "0.2.0",
+  "description": "把推文（含中文翻译和你勾选的评论）生成双语长图或网页，方便转发到微信",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -13,7 +13,8 @@
     "https://pbs.twimg.com/*",
     "https://video.twimg.com/*",
     "https://abs.twimg.com/*",
-    "https://api.deepseek.com/*"
+    "https://api.deepseek.com/*",
+    "https://api.github.com/*"
   ],
   "background": {
     "service_worker": "src/background.js"
@@ -24,7 +25,9 @@
       "js": [
         "vendor/html2canvas.min.js",
         "src/content/extract.js",
+        "src/content/redact.js",
         "src/content/card.js",
+        "src/content/webpage.js",
         "src/content/content.js"
       ],
       "css": ["src/content/content.css"],
