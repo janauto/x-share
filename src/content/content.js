@@ -81,6 +81,12 @@
   // ---------- 选择模式 ----------
 
   function enterSelection() {
+    // X 长文(Article)是完全不同的正文结构，提取器认不出正文——
+    // 不拦截的话会静默生成「只有作者+几张图、正文全丢」的残缺卡片，比报错更糟。
+    if (XS.isArticlePage()) {
+      toast('这是 X 长文（Article），暂不支持——正文会被漏掉，见 README 路线图');
+      return;
+    }
     const main = XS.findMainArticle();
     if (!main) { toast('还没找到推文，等页面加载完成后再试'); return; }
     const data = XS.extractTweet(main);
@@ -648,7 +654,9 @@
     }));
 
     if (state.cfg.publishTarget !== 'none') {
-      const label = state.cfg.publishTarget === 'gist' ? '发布到 Gist 并复制链接' : '发布并复制链接';
+      const label = state.cfg.publishTarget === 'gist' ? '发布到 Gist 并复制链接'
+        : state.cfg.publishTarget === 'cloudbase' ? '发布到 CloudBase 并复制链接'
+        : '发布并复制链接';
       const pub = btn('pri', label, async () => {
         if (!state.cfg.publishConfigured) { m.setStatus('发布后端未配置好，请到设置页填写'); return; }
         pub.disabled = true;

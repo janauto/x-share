@@ -71,7 +71,9 @@ bash scripts/package.sh          # 产物：dist/x-share-v<版本>.zip
 | **自定义服务器**（设置里选） | POST `{html}` 到你的端点，期望返回 `{url}` | ✅ 用**香港轻量服务器**或**腾讯云 CloudBase**（免备案默认域名 / HTTP 函数）即可，是自控的境内正解 |
 | **GitHub Gist**（设置里选） | 一个带 token 的 API 调用自动发布，返回 `gistpreview.github.io` 链接 | ❌ github.io 在大陆多被墙、微信常拦，仅适合**非墙内接收者 / 存档** |
 
-> **评估结论**：给国内朋友、尤其发微信，**首选「复制图文」**（借平台托管）或**图片**（最稳）。要「自己的链接」就走「自定义服务器」指向自建香港小站 / 腾讯云 CloudBase；Gist 只作境外/存档用。自定义端点需在 `manifest.json` 的 `host_permissions` 里加上该域名再刷新扩展。
+> **评估结论**：给国内朋友、尤其发微信，**首选「复制图文」**（借平台托管）或**图片**（最稳）。要「自己的链接」就走「自定义服务器 / CloudBase」——仓库已附可直接部署的 `server/cloudbase-publish/` 云函数（协议 `POST {html}` → `{url}`）；Gist 只作境外/存档用。自定义端点需在 `manifest.json` 的 `host_permissions` 里加上该域名再刷新扩展（`*.tcloudbase.com` 已预置）。
+>
+> **为什么不接「用户登录语雀/飞书/印象笔记/公众号」**：专门调研过——这些平台都无法免费、免登录、经 API 一键产出「大陆可访问」链接（语雀免费版已砍公开分享、飞书文档链接微信内被封、印象笔记 CN 版公开页要登录、公众号需认证企业主体）。凡是能出大陆可访问链接的路子最终都要一台自建后端，故直接用 CloudBase 最省事、最自控。
 
 ## 敏感内容打码
 
@@ -84,6 +86,7 @@ bash scripts/package.sh          # 产物：dist/x-share-v<版本>.zip
 
 ## 已知限制
 
+- **不支持 X 长文（Article）**：与普通推文是完全不同的正文结构（标题+富文本，不在 `tweetText` 里），提取器认不出正文。已加检测（`XS.isArticlePage`），进入这类链接点「生成转发卡片」会提示「暂不支持」并拒绝生成，不会再静默产出正文全丢、只剩作者和几张图的残缺卡片
 - **视频**只渲染封面帧 + 提示语，观看需打开原文链接（二期的 GraphQL 方案会取到可播放地址）
 - **自动选热门**只能评估「已加载出来的」评论：X 是虚拟滚动，扩展会自动向下滚动加载一批再排序，但不会滚到底；热度取自评论操作栏的点赞/转推/回复数字
 - 长推文若在时间线上被折叠，请先进入详情页并展开全文再生成
@@ -109,6 +112,7 @@ src/content/content.css     页面内 UI 样式
 src/options/options.html    设置页（翻译 / 敏感打码 / 网页发布后端）
 src/options/options.js      设置页逻辑：读写 chrome.storage、测试翻译
 icons/                      扩展图标
+server/cloudbase-publish/   境内可访问链接的发布端（CloudBase 云函数，POST {html}→{url}）
 ```
 
 内容脚本按此顺序加载（见 `manifest.json`）：`vendor/html2canvas.min.js` → `extract.js` → `redact.js` → `card.js` → `webpage.js` → `content.js`。
@@ -125,6 +129,8 @@ icons/                      扩展图标
 - [x] 生成可打开的网页（自包含 HTML）+ Gist / 自定义端点发布
 - [x] 敏感内容屏蔽 / 图片打码
 - [ ] GraphQL 响应拦截：更稳的数据源，拿到各码率视频地址（网页里可播放视频）
-- [ ] 附一个可直接部署的香港服务器发布端示例（配合「自定义服务器」）
-- [ ] X Articles 长文支持
+- [x] 附一个可直接部署的发布端示例（`server/cloudbase-publish/`，CloudBase 云函数，配合「自定义服务器 / CloudBase」）
+- [ ]（可选）腾讯文档 OpenAPI 发布目标：微信内打开最友好，但需自建后端换 token + 应用审核
+- [x] X 长文（Article）识别并友好拒绝（见「已知限制」），真正解析正文仍未做
+- [ ] X Articles 长文完整支持（解析标题+富文本正文，而不只是拒绝）
 - [ ] 卡片样式可选（X 原生风 / 阅读排版风）

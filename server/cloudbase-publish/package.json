@@ -1,0 +1,10 @@
+{
+  "name": "xshare-cloudbase-publish",
+  "version": "1.0.0",
+  "description": "x-share 网页发布端 · 腾讯云 CloudBase 云函数（POST {html} -> {url}，GET ?id= -> text/html）",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^2.9.0"
+  }
+}

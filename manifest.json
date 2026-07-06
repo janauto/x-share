@@ -14,7 +14,9 @@
     "https://video.twimg.com/*",
     "https://abs.twimg.com/*",
     "https://api.deepseek.com/*",
-    "https://api.github.com/*"
+    "https://api.github.com/*",
+    "https://*.tcloudbase.com/*",
+    "https://*.tcloudbaseapp.com/*"
   ],
   "background": {
     "service_worker": "src/background.js"

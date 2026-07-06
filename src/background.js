@@ -54,7 +54,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           const c = await getCfg();
           const publishConfigured =
             (c.publishTarget === 'gist' && !!c.gistToken) ||
-            (c.publishTarget === 'custom' && !!c.publishEndpoint);
+            (c.publishTarget === 'custom' && !!c.publishEndpoint) ||
+            (c.publishTarget === 'cloudbase' && !!c.publishEndpoint);
           sendResponse({
             hasKey: !!c.apiKey,
             translateDefault: c.translateDefault !== false,
@@ -185,8 +186,9 @@ async function publishHtml(html) {
   if (!html) return { error: '没有内容可发布' };
   const c = await getCfg();
   if (c.publishTarget === 'gist') return publishGist(html, c.gistToken);
-  if (c.publishTarget === 'custom') return publishCustom(html, c.publishEndpoint);
-  return { error: '未配置发布后端（设置页里选 Gist 或自定义服务器）' };
+  // CloudBase 复用 custom 的「POST {html} → 期望返回 {url}」协议，只是端点是云函数 HTTP 地址
+  if (c.publishTarget === 'custom' || c.publishTarget === 'cloudbase') return publishCustom(html, c.publishEndpoint);
+  return { error: '未配置发布后端（设置页里选 Gist / 自定义服务器 / 腾讯云 CloudBase）' };
 }
 
 // GitHub Gist：单次带 token 的 POST，无需服务器。返回 gistpreview 渲染链接。

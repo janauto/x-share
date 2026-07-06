@@ -9,6 +9,11 @@
 
   XS.isStatusPage = () => ID_RE.test(location.pathname);
 
+  // X 长文（Article）用完全不同的正文结构渲染（标题+富文本，不在 tweetText 里），
+  // 此锚点是长文页独有的可靠标记。当前提取器认不出长文正文，
+  // 若不拦截会静默产出「只有作者+几张图、正文全丢」的残缺卡片。
+  XS.isArticlePage = () => !!document.querySelector('[data-testid="twitter-article-title"]');
+
   XS.locationTweetId = () => {
     const m = location.pathname.match(ID_RE);
     return m ? m[1] : null;
