@@ -34,9 +34,10 @@
 
 ```
 manifest.json              MV3 清单
+vendor/html2canvas.min.js  第三方：DOM 逐元素栅格化（MIT）
 src/background.js          后台：DeepSeek 翻译、twimg 图片转 data URL（绕 CORS）
 src/content/extract.js     DOM 提取（data-testid 锚点，改版时先查这里）
-src/content/card.js        双语卡片构建 + SVG foreignObject → canvas → PNG
+src/content/card.js        双语卡片构建（内联样式）+ html2canvas → PNG
 src/content/content.js     主流程：悬浮按钮、评论勾选、生成与预览
 src/content/content.css    页面内 UI 样式
 src/options/               设置页（API Key / 模型 / 默认翻译开关）

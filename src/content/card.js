@@ -1,148 +1,158 @@
 // 双语卡片的构建与 PNG 导出。
-// 渲染方式：构建自带 <style> 的独立 DOM → XMLSerializer 序列化 →
-// SVG foreignObject → canvas（2x）→ PNG Blob。
-// 所有图片必须先转成 data URL（由 content.js 通过后台完成），否则 canvas 会被污染。
+//
+// 样式一律用「逐元素内联 cssText」，不用 class + <style>，原因有二：
+//   1. html2canvas 渲染的是卡片的克隆副本，样式必须随节点树一起被 cloneNode 复制，
+//      内联样式能做到，外部/adopted 样式表做不到（克隆后丢样式 → 导出白版）。
+//   2. x.com 的 CSP(style-src) 会拦截注入的 <style> 和 setAttribute('style')，
+//      但 element.style.cssText / 逐属性赋值 属 CSSOM 操作，CSP 不拦（已实测验证）。
+// 渲染：真实 DOM(内联样式) → html2canvas 逐元素栅格化 → canvas(2x) → PNG Blob。
+// 图片须先内联为 data URL（content.js 经后台完成），html2canvas 才能直接 drawImage。
 
 (() => {
   const XS = (window.__XS = window.__XS || {});
 
   const CARD_WIDTH = 600;
+  const FONT =
+    '-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",Arial,sans-serif';
 
-  const CARD_CSS = `
-.xs-card{width:${CARD_WIDTH}px;box-sizing:border-box;background:#ffffff;color:#0f1419;padding:26px 26px 18px;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;}
-.xs-card div,.xs-card img,.xs-card span,.xs-card b{box-sizing:border-box;margin:0;padding:0;border:0 none;}
-.xs-head{display:flex;align-items:center;gap:12px;}
-.xs-ava{width:46px;height:46px;border-radius:50%;flex:none;background:#eff3f4;object-fit:cover;}
-.xs-ava.sm{width:32px;height:32px;}
-.xs-ava.xs{width:20px;height:20px;}
-.xs-who{min-width:0;}
-.xs-name{font-size:16px;font-weight:700;line-height:1.3;word-break:break-word;color:#0f1419;}
-.xs-handle{font-size:13.5px;color:#536471;line-height:1.4;}
-.xs-xmark{margin-left:auto;font-size:24px;font-weight:800;color:#0f1419;font-family:Arial,sans-serif;align-self:flex-start;}
-.xs-text{margin-top:14px;font-size:16.5px;line-height:1.6;color:#536471;white-space:pre-wrap;word-wrap:break-word;}
-.xs-text.solo{color:#0f1419;}
-.xs-ent{color:#1d9bf0;}
-.xs-trans{margin-top:12px;font-size:17px;line-height:1.8;color:#0f1419;background:#f5f8fa;border-left:3px solid #1d9bf0;border-radius:0 10px 10px 0;padding:12px 14px;white-space:pre-wrap;word-wrap:break-word;}
-.xs-photos{margin-top:14px;display:grid;gap:4px;border-radius:14px;overflow:hidden;}
-.xs-photos img{width:100%;display:block;object-fit:cover;background:#eff3f4;}
-.xs-photos.n1 img{height:auto;max-height:700px;}
-.xs-photos.n2{grid-template-columns:1fr 1fr;}
-.xs-photos.n2 img{height:220px;}
-.xs-photos.n3{grid-template-columns:1fr 1fr;}
-.xs-photos.n3 img{height:150px;}
-.xs-photos.n3 img.big{grid-row:span 2;height:304px;}
-.xs-photos.n4{grid-template-columns:1fr 1fr;}
-.xs-photos.n4 img{height:170px;}
-.xs-video{margin-top:14px;position:relative;border-radius:14px;overflow:hidden;}
-.xs-video img{width:100%;display:block;}
-.xs-play{position:absolute;left:50%;top:50%;width:64px;height:64px;margin:-32px 0 0 -32px;border-radius:50%;background:rgba(0,0,0,0.55);}
-.xs-play span{position:absolute;left:24px;top:17px;width:0;height:0;border-left:22px solid #ffffff;border-top:14px solid transparent;border-bottom:14px solid transparent;}
-.xs-vnote{margin-top:6px;font-size:12.5px;color:#8b98a5;}
-.xs-vbox{margin-top:14px;border:1px solid #e1e8ed;border-radius:14px;padding:18px;font-size:14px;color:#536471;background:#f7f9f9;}
-.xs-quote{margin-top:14px;border:1px solid #e1e8ed;border-radius:14px;padding:12px 14px;}
-.xs-qhead{display:flex;align-items:center;gap:8px;}
-.xs-qhead .xs-name{font-size:14px;}
-.xs-qhead .xs-handle{font-size:12.5px;}
-.xs-quote .xs-text{font-size:15px;margin-top:8px;}
-.xs-quote .xs-trans{font-size:15px;line-height:1.7;margin-top:8px;padding:10px 12px;}
-.xs-quote .xs-photos{margin-top:10px;}
-.xs-quote .xs-photos.n1 img{max-height:360px;}
-.xs-replies{margin-top:22px;}
-.xs-rtitle{font-size:13px;color:#8b98a5;padding-bottom:6px;border-bottom:1px solid #eff3f4;}
-.xs-reply{display:flex;gap:10px;padding:14px 0 12px;border-bottom:1px solid #f4f7f8;}
-.xs-rbody{flex:1;min-width:0;}
-.xs-rline{font-size:14px;color:#0f1419;line-height:1.4;}
-.xs-rline b{font-weight:700;}
-.xs-rline span{color:#536471;font-weight:400;font-size:12.5px;margin-left:6px;}
-.xs-reply .xs-text{font-size:14.5px;margin-top:4px;line-height:1.55;}
-.xs-reply .xs-trans{font-size:14.5px;line-height:1.65;margin-top:8px;padding:8px 10px;border-radius:0 8px 8px 0;}
-.xs-reply .xs-photos{margin-top:8px;max-width:420px;}
-.xs-reply .xs-photos img{height:140px;}
-.xs-reply .xs-photos.n1 img{height:auto;max-height:300px;}
-.xs-foot{margin-top:18px;padding-top:12px;border-top:1px solid #eff3f4;display:flex;justify-content:space-between;gap:16px;font-size:12px;color:#8b98a5;}
-.xs-foot .src{word-break:break-all;min-width:0;}
-.xs-foot .gen{flex:none;white-space:nowrap;}
-`;
+  // 译文块与正文的公共样式，按场景（主/引用/回复）微调字号
+  const TRANS_BASE =
+    'box-sizing:border-box;color:#0f1419;background:#f5f8fa;border-left:3px solid #1d9bf0;white-space:pre-wrap;word-wrap:break-word;';
+  const TEXT_BASE = 'white-space:pre-wrap;word-wrap:break-word;';
 
-  function el(tag, cls, text) {
+  const CTX = {
+    main: {
+      text: (t) => TEXT_BASE + `margin-top:14px;font-size:16.5px;line-height:1.6;color:${t ? '#536471' : '#0f1419'};`,
+      trans: TRANS_BASE + 'margin-top:12px;font-size:17px;line-height:1.8;border-radius:0 10px 10px 0;padding:12px 14px;',
+      photosMt: 14,
+      imgH: (n, i) =>
+        n === 1 ? 'height:auto;max-height:700px;'
+        : n === 2 ? 'height:220px;'
+        : n === 3 ? (i === 0 ? 'grid-row:span 2;height:304px;' : 'height:150px;')
+        : 'height:170px;',
+      containerExtra: '',
+    },
+    quote: {
+      text: (t) => TEXT_BASE + `margin-top:8px;font-size:15px;line-height:1.6;color:${t ? '#536471' : '#0f1419'};`,
+      trans: TRANS_BASE + 'margin-top:8px;font-size:15px;line-height:1.7;border-radius:0 10px 10px 0;padding:10px 12px;',
+      photosMt: 10,
+      imgH: (n, i) =>
+        n === 1 ? 'height:auto;max-height:360px;'
+        : n === 2 ? 'height:220px;'
+        : n === 3 ? (i === 0 ? 'grid-row:span 2;height:304px;' : 'height:150px;')
+        : 'height:170px;',
+      containerExtra: '',
+    },
+    reply: {
+      text: (t) => TEXT_BASE + `margin-top:4px;font-size:14.5px;line-height:1.55;color:${t ? '#536471' : '#0f1419'};`,
+      trans: TRANS_BASE + 'margin-top:8px;font-size:14.5px;line-height:1.65;border-radius:0 8px 8px 0;padding:8px 10px;',
+      photosMt: 8,
+      imgH: (n) => (n === 1 ? 'height:auto;max-height:300px;' : 'height:140px;'),
+      containerExtra: 'max-width:420px;',
+    },
+  };
+
+  function avatarCss(size) {
+    return `width:${size}px;height:${size}px;border-radius:50%;flex:none;background:#eff3f4;object-fit:cover;`;
+  }
+
+  function el(tag, css, text) {
     const e = document.createElement(tag);
-    if (cls) e.className = cls;
+    if (css) e.style.cssText = css;
     if (text != null) e.textContent = text;
     return e;
   }
 
   function segmentsToNode(container, segments) {
     for (const s of segments) {
-      if (s.type === 'ent') container.appendChild(el('span', 'xs-ent', s.text));
+      if (s.type === 'ent') container.appendChild(el('span', 'color:#1d9bf0;', s.text));
       else container.appendChild(document.createTextNode(s.text));
     }
     return container;
   }
 
-  function photoGrid(dataUrls) {
+  function photoGrid(dataUrls, ctx) {
     const n = Math.min(dataUrls.length, 4);
-    const grid = el('div', `xs-photos n${n}`);
+    const cols = n === 1 ? '' : 'grid-template-columns:1fr 1fr;';
+    const grid = el(
+      'div',
+      `margin-top:${ctx.photosMt}px;display:grid;gap:4px;border-radius:14px;overflow:hidden;${cols}${ctx.containerExtra}`
+    );
     dataUrls.slice(0, 4).forEach((u, i) => {
-      const img = el('img');
-      if (n === 3 && i === 0) img.className = 'big';
+      const img = el('img', `width:100%;display:block;object-fit:cover;background:#eff3f4;${ctx.imgH(n, i)}`);
       img.src = u;
       grid.appendChild(img);
     });
     return grid;
   }
 
-  function textBlocks(parent, d, opts) {
+  // 正文 + 译文 + 图片 + 视频 + 引用，按场景 ctx 渲染
+  function textBlocks(parent, d, ctx, opts) {
     if (d.segments && d.segments.length) {
-      const t = el('div', 'xs-text' + (d.translation ? '' : ' solo'));
+      const t = el('div', ctx.text(!!d.translation));
       segmentsToNode(t, d.segments);
       parent.appendChild(t);
     }
-    if (d.translation) parent.appendChild(el('div', 'xs-trans', d.translation));
-    if (d.photosData && d.photosData.length) parent.appendChild(photoGrid(d.photosData));
+    if (d.translation) parent.appendChild(el('div', ctx.trans, d.translation));
+    if (d.photosData && d.photosData.length) parent.appendChild(photoGrid(d.photosData, ctx));
     if (d.hasVideo) {
       if (d.videoPosterData) {
-        const v = el('div', 'xs-video');
-        const img = el('img');
+        const v = el('div', 'margin-top:14px;position:relative;border-radius:14px;overflow:hidden;');
+        const img = el('img', 'width:100%;display:block;');
         img.src = d.videoPosterData;
         v.appendChild(img);
-        const play = el('div', 'xs-play');
-        play.appendChild(el('span'));
+        const play = el(
+          'div',
+          'position:absolute;left:50%;top:50%;width:64px;height:64px;margin:-32px 0 0 -32px;border-radius:50%;background:rgba(0,0,0,0.55);'
+        );
+        play.appendChild(
+          el(
+            'div',
+            'position:absolute;left:24px;top:17px;width:0;height:0;border-left:22px solid #ffffff;border-top:14px solid transparent;border-bottom:14px solid transparent;'
+          )
+        );
         v.appendChild(play);
         parent.appendChild(v);
-        parent.appendChild(el('div', 'xs-vnote', '🎬 视频内容 · 观看请打开底部原文链接'));
+        parent.appendChild(el('div', 'margin-top:6px;font-size:12.5px;color:#8b98a5;', '🎬 视频内容 · 观看请打开底部原文链接'));
       } else {
-        parent.appendChild(el('div', 'xs-vbox', '🎬 此推文包含视频，观看请打开底部原文链接'));
+        parent.appendChild(
+          el(
+            'div',
+            'box-sizing:border-box;margin-top:14px;border:1px solid #e1e8ed;border-radius:14px;padding:18px;font-size:14px;color:#536471;background:#f7f9f9;',
+            '🎬 此推文包含视频，观看请打开底部原文链接'
+          )
+        );
       }
     }
     if (d.quote && !(opts && opts.noQuote)) parent.appendChild(quoteBox(d.quote));
   }
 
   function quoteBox(q) {
-    const box = el('div', 'xs-quote');
-    const head = el('div', 'xs-qhead');
+    const box = el('div', 'box-sizing:border-box;margin-top:14px;border:1px solid #e1e8ed;border-radius:14px;padding:12px 14px;');
+    const head = el('div', 'display:flex;align-items:center;gap:8px;');
     if (q.avatarData) {
-      const img = el('img', 'xs-ava xs');
+      const img = el('img', avatarCss(20));
       img.src = q.avatarData;
       head.appendChild(img);
     }
-    head.appendChild(el('span', 'xs-name', q.name || ''));
-    head.appendChild(el('span', 'xs-handle', q.handle || ''));
+    head.appendChild(el('span', 'font-size:14px;font-weight:700;line-height:1.3;color:#0f1419;word-break:break-word;', q.name || ''));
+    head.appendChild(el('span', 'font-size:12.5px;color:#536471;line-height:1.4;', q.handle || ''));
     box.appendChild(head);
-    textBlocks(box, q, { noQuote: true });
+    textBlocks(box, q, CTX.quote, { noQuote: true });
     return box;
   }
 
   function replyRow(d) {
-    const row = el('div', 'xs-reply');
-    const img = el('img', 'xs-ava sm');
+    const row = el('div', 'display:flex;gap:10px;padding:14px 0 12px;border-bottom:1px solid #f4f7f8;');
+    const img = el('img', avatarCss(32));
     if (d.avatarData) img.src = d.avatarData;
     row.appendChild(img);
-    const body = el('div', 'xs-rbody');
-    const line = el('div', 'xs-rline');
-    line.appendChild(el('b', null, d.name || ''));
-    line.appendChild(el('span', null, d.handle || ''));
+    const body = el('div', 'flex:1;min-width:0;');
+    const line = el('div', 'font-size:14px;color:#0f1419;line-height:1.4;');
+    line.appendChild(el('b', 'font-weight:700;', d.name || ''));
+    line.appendChild(el('span', 'color:#536471;font-weight:400;font-size:12.5px;margin-left:6px;', d.handle || ''));
     body.appendChild(line);
-    textBlocks(body, d);
+    textBlocks(body, d, CTX.reply);
     row.appendChild(body);
     return row;
   }
@@ -157,37 +167,36 @@
 
   XS.buildCard = function (payload) {
     const { main, replies } = payload;
-    const root = el('div', 'xs-card');
+    const root = el(
+      'div',
+      `width:${CARD_WIDTH}px;box-sizing:border-box;background:#ffffff;color:#0f1419;padding:26px 26px 18px;font-family:${FONT};`
+    );
 
-    const style = document.createElement('style');
-    style.textContent = CARD_CSS;
-    root.appendChild(style);
-
-    const head = el('div', 'xs-head');
-    const ava = el('img', 'xs-ava');
+    const head = el('div', 'display:flex;align-items:center;gap:12px;');
+    const ava = el('img', avatarCss(46));
     if (main.avatarData) ava.src = main.avatarData;
     head.appendChild(ava);
-    const who = el('div', 'xs-who');
-    who.appendChild(el('div', 'xs-name', main.name || ''));
-    who.appendChild(el('div', 'xs-handle', main.handle || ''));
+    const who = el('div', 'min-width:0;');
+    who.appendChild(el('div', 'font-size:16px;font-weight:700;line-height:1.3;word-break:break-word;color:#0f1419;', main.name || ''));
+    who.appendChild(el('div', 'font-size:13.5px;color:#536471;line-height:1.4;', main.handle || ''));
     head.appendChild(who);
-    head.appendChild(el('div', 'xs-xmark', '𝕏'));
+    head.appendChild(el('div', 'margin-left:auto;font-size:24px;font-weight:800;color:#0f1419;font-family:Arial,sans-serif;align-self:flex-start;', '𝕏'));
     root.appendChild(head);
 
-    textBlocks(root, main);
+    textBlocks(root, main, CTX.main);
 
     if (replies && replies.length) {
-      const sec = el('div', 'xs-replies');
-      sec.appendChild(el('div', 'xs-rtitle', `精选评论 · ${replies.length} 条`));
+      const sec = el('div', 'margin-top:22px;');
+      sec.appendChild(el('div', 'font-size:13px;color:#8b98a5;padding-bottom:6px;border-bottom:1px solid #eff3f4;', `精选评论 · ${replies.length} 条`));
       replies.forEach((r) => sec.appendChild(replyRow(r)));
       root.appendChild(sec);
     }
 
-    const foot = el('div', 'xs-foot');
+    const foot = el('div', 'margin-top:18px;padding-top:12px;border-top:1px solid #eff3f4;display:flex;justify-content:space-between;gap:16px;font-size:12px;color:#8b98a5;');
     const src = (main.permalink || '').replace(/^https?:\/\//, '');
-    foot.appendChild(el('div', 'src', src ? `原文：${src}` : ''));
+    foot.appendChild(el('div', 'word-break:break-all;min-width:0;', src ? `原文：${src}` : ''));
     const dateStr = fmtDate(main.datetime);
-    foot.appendChild(el('div', 'gen', `${dateStr ? dateStr + ' · ' : ''}X 转发卡片`));
+    foot.appendChild(el('div', 'flex:none;white-space:nowrap;', `${dateStr ? dateStr + ' · ' : ''}X 转发卡片`));
     root.appendChild(foot);
 
     return root;
@@ -201,52 +210,36 @@
   }
 
   XS.renderCardToPng = async function (card) {
-    // all:initial 隔离页面样式，保证测量高度与 foreignObject 渲染一致
+    // html2canvas 逐元素栅格化，避免 SVG foreignObject 方案在 Chromium 下污染画布
+    // （toBlob 抛 "Tainted canvases may not be exported"）。卡片图片均为内联 data URL，不污染。
+    if (typeof window.html2canvas !== 'function') throw new Error('html2canvas 未加载');
+
     const holder = document.createElement('div');
-    holder.style.cssText = 'all:initial;position:fixed;left:-99999px;top:0;z-index:-1;';
+    holder.style.cssText = 'position:fixed;left:-99999px;top:0;z-index:-1;background:#ffffff;';
     holder.appendChild(card);
     document.body.appendChild(holder);
 
     try {
       await waitForImages(card);
-      const w = CARD_WIDTH;
       const h = Math.ceil(card.getBoundingClientRect().height);
       if (!h) throw new Error('卡片高度测量失败');
 
-      const xml = new XMLSerializer().serializeToString(card);
-      const svg =
-        `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">` +
-        `<foreignObject width="100%" height="100%">${xml}</foreignObject></svg>`;
-      const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
+      let scale = 2;
+      const MAX_DIM = 16000; // canvas 尺寸上限余量
+      if (h * scale > MAX_DIM) scale = Math.max(1, MAX_DIM / h);
 
-      try {
-        const img = await new Promise((resolve, reject) => {
-          const im = new Image();
-          im.onload = () => resolve(im);
-          im.onerror = () => reject(new Error('SVG 渲染失败'));
-          im.src = url;
-        });
+      const canvas = await window.html2canvas(card, {
+        backgroundColor: '#ffffff',
+        scale,
+        width: CARD_WIDTH,
+        useCORS: true,
+        logging: false,
+        imageTimeout: 0,
+      });
 
-        let scale = 2;
-        const MAX_DIM = 16000; // 留出 canvas 上限余量
-        if (h * scale > MAX_DIM) scale = Math.max(1, MAX_DIM / h);
-
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.round(w * scale);
-        canvas.height = Math.round(h * scale);
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.scale(scale, scale);
-        ctx.drawImage(img, 0, 0);
-
-        const blob = await new Promise((resolve, reject) => {
-          canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('PNG 导出失败'))), 'image/png');
-        });
-        return blob;
-      } finally {
-        URL.revokeObjectURL(url);
-      }
+      return await new Promise((resolve, reject) => {
+        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('PNG 导出失败'))), 'image/png');
+      });
     } finally {
       holder.remove();
     }

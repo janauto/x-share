@@ -22,6 +22,7 @@
     {
       "matches": ["https://x.com/*", "https://twitter.com/*"],
       "js": [
+        "vendor/html2canvas.min.js",
         "src/content/extract.js",
         "src/content/card.js",
         "src/content/content.js"
