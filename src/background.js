@@ -6,6 +6,9 @@ const DEFAULTS = {
   apiBase: 'https://api.deepseek.com',
   model: 'deepseek-chat',
   translateDefault: true,
+  // 评论：进入选择模式时自动按热度选取前 N 条
+  autoHotDefault: true,
+  autoHotN: 10,
   // 敏感内容屏蔽
   redactEnabled: false,
   redactMode: 'rules', // 'rules' | 'model'
@@ -55,6 +58,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           sendResponse({
             hasKey: !!c.apiKey,
             translateDefault: c.translateDefault !== false,
+            autoHotDefault: c.autoHotDefault !== false,
+            autoHotN: c.autoHotN || 10,
             redactEnabled: !!c.redactEnabled,
             redactMode: c.redactMode || 'rules',
             redactTerms: c.redactTerms || '',

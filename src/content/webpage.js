@@ -48,18 +48,45 @@
     return `<div class="trans">${segHtml([{ type: 'text', text: d.translation }])}</div>`;
   }
 
+  // 有序内容块（保文档顺序，图片不再甩到末尾）；无 blocks 时回退旧顺序
+  function blocksOf(d) {
+    if (d.blocks && d.blocks.length) return d.blocks;
+    const b = [];
+    if (d.segments && d.segments.length) b.push({ type: 'text', segments: d.segments });
+    if (d.photosData && d.photosData.some(Boolean)) b.push({ type: 'photos', all: true });
+    if (d.hasVideo) b.push({ type: 'video' });
+    if (d.quote) b.push({ type: 'quote' });
+    return b;
+  }
+  function blockPhotos(d, b) {
+    const arr = d.photosData || [];
+    const picked = b.all ? arr : (b.idx || []).map((i) => arr[i]);
+    return picked.filter(Boolean);
+  }
+
   function bodyHtml(d) {
-    let h = '';
-    if (d.segments && d.segments.length) h += `<div class="text">${segHtml(d.segments)}</div>`;
-    h += transHtml(d);
-    h += photosHtml(d.photosData);
-    h += videoHtml(d);
-    if (d.quote) h += quoteHtml(d.quote);
+    let h = '', transDone = false;
+    const emitTrans = () => { if (!transDone) { h += transHtml(d); transDone = true; } };
+    for (const b of blocksOf(d)) {
+      if (b.type === 'text') {
+        if (b.segments && b.segments.length) h += `<div class="text">${segHtml(b.segments)}</div>`;
+        emitTrans(); // 译文紧跟第一段正文
+      } else if (b.type === 'photos') {
+        h += photosHtml(blockPhotos(d, b));
+      } else if (b.type === 'video') {
+        h += videoHtml(d);
+      } else if (b.type === 'quote') {
+        if (d.quote) h += quoteHtml(d.quote);
+      }
+    }
+    emitTrans();
     return h;
   }
 
   function avatar(d, cls) {
-    return d.avatarData ? `<img class="ava ${cls || ''}" src="${esc(d.avatarData)}">` : `<span class="ava ${cls || ''}"></span>`;
+    if (d.avatarData) return `<img class="ava ${cls || ''}" src="${esc(d.avatarData)}">`;
+    const bg = XS.avatarColor(d.handle || d.name);
+    return `<span class="ava ini ${cls || ''}" style="background:${bg}">${esc(XS.avatarInitial(d.name, d.handle))}</span>`;
   }
 
   function quoteHtml(q) {
@@ -86,6 +113,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei
 .head{display:flex;align-items:center;gap:12px}
 .ava{width:46px;height:46px;border-radius:50%;background:#eff3f4;object-fit:cover;flex:none;display:inline-block}
 .ava.sm{width:32px;height:32px}.ava.xs{width:20px;height:20px}
+.ava.ini{display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:20px}
+.ava.sm.ini{font-size:14px}.ava.xs.ini{font-size:11px}
 .name{font-weight:700;font-size:16px}
 .handle{color:#536471;font-size:13px;font-weight:400;margin-left:6px}
 .text{margin-top:12px;font-size:16.5px;white-space:pre-wrap;word-wrap:break-word}
@@ -150,5 +179,101 @@ body.hide-trans .trans{display:none}
 </div>
 <script>${TOGGLE_JS}</script>
 </body></html>`;
+  };
+
+  // ---------- 「复制图文」：可粘贴进公众号/文档的富文本片段 ----------
+  // 用内联 style（不用 class + <style>），因为粘贴进富文本编辑器时外部样式表会被丢弃。
+  // 图片仍是内联 data URL：语雀/飞书/腾讯文档/印象笔记 粘贴时会自动重传托管；
+  // 公众号编辑器可能丢弃 data URL 图片（其图片需上传到自家服务器），属已知取舍。
+
+  function richSeg(segments) {
+    if (!segments || !segments.length) return '';
+    return segments
+      .map((s) => (s.type === 'ent' ? `<span style="color:#1d9bf0">${esc(s.text)}</span>` : esc(s.text)))
+      .join('')
+      .replace(/\n/g, '<br>');
+  }
+
+  function richImgs(photosData) {
+    if (!photosData || !photosData.length) return '';
+    return photosData
+      .slice(0, 4)
+      .map((u) => `<img src="${esc(u)}" style="max-width:100%;border-radius:12px;margin-top:8px;display:block">`)
+      .join('');
+  }
+
+  function richAvatar(d, size) {
+    if (d.avatarData)
+      return `<img src="${esc(d.avatarData)}" width="${size}" height="${size}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;vertical-align:middle">`;
+    return `<span style="display:inline-block;width:${size}px;height:${size}px;border-radius:50%;background:${XS.avatarColor(d.handle || d.name)};color:#fff;text-align:center;line-height:${size}px;font-weight:700;vertical-align:middle">${esc(XS.avatarInitial(d.name, d.handle))}</span>`;
+  }
+
+  function richHead(d, avaSize, nameSize) {
+    return `<div style="margin-bottom:2px">${richAvatar(d, avaSize)} <b style="font-size:${nameSize}px;vertical-align:middle">${esc(d.name)}</b> <span style="color:#536471;font-size:13px;vertical-align:middle">${esc(d.handle)}</span></div>`;
+  }
+
+  function richBody(d) {
+    let h = '', transDone = false;
+    const emitTrans = () => {
+      if (transDone) return;
+      transDone = true;
+      if (d.translation)
+        h += `<div style="margin-top:8px;font-size:15px;line-height:1.7;background:#f5f8fa;border-left:3px solid #1d9bf0;border-radius:0 8px 8px 0;padding:8px 12px;white-space:pre-wrap;word-wrap:break-word">${esc(d.translation).replace(/\n/g, '<br>')}</div>`;
+    };
+    for (const b of blocksOf(d)) {
+      if (b.type === 'text') {
+        if (b.segments && b.segments.length)
+          h += `<div style="margin-top:8px;font-size:16px;line-height:1.7;white-space:pre-wrap;word-wrap:break-word">${richSeg(b.segments)}</div>`;
+        emitTrans();
+      } else if (b.type === 'photos') {
+        h += richImgs(blockPhotos(d, b));
+      } else if (b.type === 'video') {
+        if (d.hasVideo && d.videoPosterData)
+          h += `<img src="${esc(d.videoPosterData)}" style="max-width:100%;border-radius:12px;margin-top:8px;display:block">`;
+      } else if (b.type === 'quote') {
+        if (d.quote)
+          h += `<div style="margin-top:10px;border:1px solid #e1e8ed;border-radius:12px;padding:10px 12px">${richHead(d.quote, 20, 14)}${richBody(d.quote)}</div>`;
+      }
+    }
+    emitTrans();
+    return h;
+  }
+
+  XS.buildRichHtml = function (payload) {
+    const { main, replies } = payload;
+    let h = '<div style="font-family:-apple-system,BlinkMacSystemFont,\'PingFang SC\',\'Microsoft YaHei\',sans-serif;color:#0f1419;max-width:600px">';
+    h += richHead(main, 40, 16);
+    h += richBody(main);
+    if (replies && replies.length) {
+      h += `<div style="margin-top:14px;padding-top:8px;border-top:1px solid #eff3f4;color:#8b98a5;font-size:13px">精选评论 · ${replies.length} 条</div>`;
+      replies.forEach((r) => {
+        h += `<div style="padding:10px 0;border-bottom:1px solid #f4f7f8">${richHead(r, 24, 14)}${richBody(r)}</div>`;
+      });
+    }
+    const t = fmtDate(main.datetime);
+    const link = main.permalink ? `原文：<a href="${esc(main.permalink)}" style="color:#8b98a5">${esc(main.permalink)}</a>` : '';
+    h += `<div style="margin-top:12px;color:#8b98a5;font-size:12px">${t ? t + ' · ' : ''}${link}</div>`;
+    h += '</div>';
+    return h;
+  };
+
+  // text/html 不支持时的纯文本兜底
+  XS.buildPlainText = function (payload) {
+    const { main, replies } = payload;
+    const lines = [];
+    const one = (d, pad) => {
+      const t = d.segments ? d.segments.map((s) => s.text).join('') : '';
+      if (d.name) lines.push(`${pad}${d.name}${d.handle ? ' ' + d.handle : ''}`);
+      if (t) lines.push(pad + t.replace(/\n/g, '\n' + pad));
+      if (d.translation) lines.push(pad + '【译】' + d.translation.replace(/\n/g, '\n' + pad));
+      if (d.quote) one(d.quote, pad + '  ');
+    };
+    one(main, '');
+    if (replies && replies.length) {
+      lines.push('', '— 精选评论 —');
+      replies.forEach((r) => { one(r, ''); lines.push(''); });
+    }
+    if (main.permalink) lines.push('原文：' + main.permalink);
+    return lines.join('\n');
   };
 })();

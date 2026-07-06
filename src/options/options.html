@@ -68,6 +68,17 @@
     <label class="check"><input type="checkbox" id="translateDefault" checked> 生成时默认勾选「附中文翻译」</label>
   </div>
 
+  <h2>评论</h2>
+  <div class="row">
+    <label class="check"><input type="checkbox" id="autoHotDefault" checked> 进入选择模式时，自动选取热门评论</label>
+    <div class="hint">开启后，点悬浮按钮进入选择模式会自动向下加载评论、按热度（点赞/转推/回复）选出前 N 条，之后仍可在操作栏手动增减。关掉则进入时不选、由你手动点或按「🔥 自动选热门」。</div>
+  </div>
+  <div class="row">
+    <label for="autoHotN">自动选取条数 N</label>
+    <input type="text" id="autoHotN" placeholder="10">
+    <div class="hint">默认 10，最多 20。也可在操作栏里临时改，改动会记住。</div>
+  </div>
+
   <h2>敏感内容屏蔽 / 打码</h2>
   <div class="row">
     <label class="check"><input type="checkbox" id="redactEnabled"> 生成时默认勾选「敏感打码」</label>
