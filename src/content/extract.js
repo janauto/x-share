@@ -9,11 +9,6 @@
 
   XS.isStatusPage = () => ID_RE.test(location.pathname);
 
-  // X 长文（Article）用完全不同的正文结构渲染（标题+富文本，不在 tweetText 里），
-  // 此锚点是长文页独有的可靠标记。当前提取器认不出长文正文，
-  // 若不拦截会静默产出「只有作者+几张图、正文全丢」的残缺卡片。
-  XS.isArticlePage = () => !!document.querySelector('[data-testid="twitter-article-title"]');
-
   XS.locationTweetId = () => {
     const m = location.pathname.match(ID_RE);
     return m ? m[1] : null;
@@ -58,6 +53,84 @@
     else out.push({ type, text });
   }
 
+  // ---------- X 长文（Article）正文兜底 ----------
+  // X 长文不用 tweetText 装正文，而是标题+富文本单独的容器；
+  // 常规 DOM 走查找不到任何 'text' 块时，退到这里找正文，
+  // 找不到再退到「有 lang 属性的可见文本节点」这个更泛的兜底。
+  function isInsideQuote(el, quoteEl) {
+    return !!(quoteEl && quoteEl.contains(el));
+  }
+
+  function isTextNoise(el, quoteEl) {
+    if (isInsideQuote(el, quoteEl)) return true;
+    if (el.closest('[data-testid="User-Name"], [data-testid="tweetPhoto"], video')) return true;
+    if (el.closest('button, [role="button"], [role="menu"], [data-testid="caret"]')) return true;
+    if (el.querySelector('time')) return true;
+    return false;
+  }
+
+  function normalizedText(el) {
+    return inlineText(el).replace(/ /g, ' ').trim();
+  }
+
+  function meaningfulText(el) {
+    const t = normalizedText(el);
+    if (!t) return '';
+    if (/^(show more|显示更多|查看更多|展开|更多)$/i.test(t)) return '';
+    return t;
+  }
+
+  function findFirstOutside(scope, selector, quoteEl) {
+    for (const el of scope.querySelectorAll(selector)) {
+      if (!isInsideQuote(el, quoteEl)) return el;
+    }
+    return null;
+  }
+
+  function visibleText(el) {
+    return (el.innerText || normalizedText(el)).replace(/ /g, ' ').trim();
+  }
+
+  function pushTextBlock(out, text) {
+    const t = String(text || '').trim();
+    if (!t) return;
+    if (out.length) pushSeg(out, 'text', '\n\n');
+    pushSeg(out, 'text', t);
+  }
+
+  // 长文：标题 + 正文富文本，在 twitterArticleReadView 容器里
+  function articleTextSegments(scope, quoteEl) {
+    const articleRoot = findFirstOutside(scope, '[data-testid="twitterArticleReadView"]', quoteEl);
+    if (!articleRoot) return [];
+
+    const out = [];
+    const title = findFirstOutside(articleRoot, '[data-testid="twitter-article-title"]', quoteEl);
+    const body = findFirstOutside(
+      articleRoot,
+      '[data-testid="twitterArticleRichTextView"], [data-testid="longformRichTextComponent"]',
+      quoteEl
+    );
+
+    pushTextBlock(out, title && visibleText(title));
+    pushTextBlock(out, body && visibleText(body));
+    return out;
+  }
+
+  // 再退一步：找带 lang 属性的可见正文节点，排除用户名/媒体/按钮/引用等噪声区域
+  function fallbackTextSegments(scope, quoteEl) {
+    const raw = [...scope.querySelectorAll('div[lang], span[lang]')]
+      .filter((el) => !isTextNoise(el, quoteEl))
+      .filter((el) => meaningfulText(el));
+
+    const blocks = raw.filter((el) => !raw.some((other) => other !== el && other.contains(el)));
+    const out = [];
+    blocks.forEach((el) => {
+      if (out.length) pushSeg(out, 'text', '\n\n');
+      walkSegments(el, out);
+    });
+    return out;
+  }
+
   // 按文档顺序把推文内容切成有序块：文本 / 图片组 / 视频 / 引用。
   // 关键：X 的图文本可以「文字→图→文字」穿插（长推文/展开后），
   // 旧做法把「所有文字」和「所有图片」拆成两个平铺数组，渲染时图片一律甩到末尾，
@@ -71,7 +144,8 @@
       if (node.nodeType !== 1) return;
       if (quoteEl && node === quoteEl) { flush(); blocks.push({ type: 'quote' }); return; } // 不下钻引用内部
       const tid = node.getAttribute && node.getAttribute('data-testid');
-      if (tid === 'tweetText') {
+      // noteTweetText/articleText：长推文/长文偶尔用这两个变体装正文，而非 tweetText
+      if (tid === 'tweetText' || tid === 'noteTweetText' || tid === 'articleText') {
         flush();
         const segs = [];
         walkSegments(node, segs);
@@ -96,6 +170,16 @@
     };
     for (const c of scope.childNodes) visit(c);
     flush();
+
+    // 常规 tweetText 走查没找到任何正文（典型是 X 长文/Article）：
+    // 退到长文专用容器，再退到「可见 lang 节点」兜底。找到就整段前插为一个
+    // text 块——长文本身不追求与图片精确穿插，「先给正文再给配图」已是很大改善
+    // （原来是正文完全消失，只剩作者和几张毫无上下文的图）。
+    if (!blocks.some((b) => b.type === 'text')) {
+      let segs = articleTextSegments(scope, quoteEl);
+      if (!segs.length) segs = fallbackTextSegments(scope, quoteEl);
+      if (segs.length) blocks.unshift({ type: 'text', segments: segs });
+    }
     return blocks;
   }
 

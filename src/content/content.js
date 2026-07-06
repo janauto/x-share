@@ -81,12 +81,8 @@
   // ---------- 选择模式 ----------
 
   function enterSelection() {
-    // X 长文(Article)是完全不同的正文结构，提取器认不出正文——
-    // 不拦截的话会静默生成「只有作者+几张图、正文全丢」的残缺卡片，比报错更糟。
-    if (XS.isArticlePage()) {
-      toast('这是 X 长文（Article），暂不支持——正文会被漏掉，见 README 路线图');
-      return;
-    }
+    // X 长文(Article)现在由 extract.js 的兜底逻辑正确解析正文，
+    // 不再需要在此处拦截（旧版本会直接拒绝，导致长文完全无法使用）。
     const main = XS.findMainArticle();
     if (!main) { toast('还没找到推文，等页面加载完成后再试'); return; }
     const data = XS.extractTweet(main);
