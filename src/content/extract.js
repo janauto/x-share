@@ -84,6 +84,42 @@
     return url ? url.replace('_normal.', '_200x200.') : null;
   }
 
+  // 把 "1.2K" / "3.4M" / "1.2万" / "5,432" 解析成数字
+  function parseCount(s) {
+    if (!s) return 0;
+    const t = String(s).trim().replace(/[,，\s]/g, '');
+    const m = t.match(/^([\d.]+)\s*([KMkm万萬])?/);
+    if (!m) return 0;
+    let n = parseFloat(m[1]) || 0;
+    const u = m[2];
+    if (u === 'K' || u === 'k') n *= 1e3;
+    else if (u === 'M' || u === 'm') n *= 1e6;
+    else if (u === '万' || u === '萬') n *= 1e4;
+    return Math.round(n);
+  }
+
+  function metric(article, testids) {
+    for (const id of testids) {
+      const btn = article.querySelector(`[data-testid="${id}"]`);
+      if (btn) {
+        // 优先用 aria-label 里的数字（更稳），退回可见文本
+        const aria = btn.getAttribute('aria-label') || '';
+        const am = aria.match(/([\d.,]+\s*[KMkm万萬]?)/);
+        return parseCount(am ? am[1] : btn.textContent);
+      }
+    }
+    return 0;
+  }
+
+  // 从回复/推文的操作栏解析互动量。引用推文没有操作栏，故只对 article 顶层有意义。
+  // 热度分：点赞 + 转推×2 + 回复（转推更稀缺，权重更高）。
+  XS.extractEngagement = function (article) {
+    const likes = metric(article, ['like', 'unlike']);
+    const retweets = metric(article, ['retweet', 'unretweet']);
+    const replies = metric(article, ['reply']);
+    return { likes, retweets, replies, score: likes + retweets * 2 + replies };
+  };
+
   // 快速拿推文 ID（选择模式下频繁调用，保持轻量）
   XS.quickTweetId = function (article) {
     const quote = findQuote(article);
@@ -169,6 +205,7 @@
     }
     if (!d.permalink) d.permalink = canonicalLocationUrl();
     if (!d.name && !d.plainText && !d.photos.length) return null; // 解析失败
+    d.engagement = XS.extractEngagement(article);
     return d;
   };
 
