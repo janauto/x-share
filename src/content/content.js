@@ -653,6 +653,29 @@
         : '复制失败，请改用「下载 HTML」');
     }));
 
+    // 发布到腾讯文档（引导式半自动）：无条件显示，不依赖 publishTarget 配置。
+    // 主通道是系统剪贴板——这里在用户手势内用 copyRich 把图文写入剪贴板，再存 pending
+    // 任务、开 docs.qq.com/desktop 新标签，由 txdocs.js 挂引导浮层、按状态机推进。
+    m.foot.appendChild(btn('pri2', '发布到腾讯文档', async () => {
+      const ok = await copyRich(rich, plain);
+      if (!ok) { m.setStatus('复制失败，无法发布到腾讯文档（图文需先进剪贴板）'); return; }
+      try {
+        await chrome.storage.local.set({
+          xsTxdocsPending: {
+            html: rich,
+            plain: plain || '',
+            title: txdocsTitle(state.mainData),
+            ts: Date.now(),
+          },
+        });
+      } catch (e) {
+        m.setStatus('准备失败：' + ((e && e.message) || e));
+        return;
+      }
+      window.open('https://docs.qq.com/desktop', '_blank', 'noopener');
+      m.setStatus('已复制图文，请在新打开的腾讯文档标签按右下角向导操作（登录后按一次 ⌘V 粘贴）');
+    }));
+
     if (state.cfg.publishTarget !== 'none') {
       const label = state.cfg.publishTarget === 'gist' ? '发布到 Gist 并复制链接'
         : state.cfg.publishTarget === 'cloudbase' ? '发布到 CloudBase 并复制链接'
@@ -720,6 +743,19 @@
     } catch (_) {
       return false;
     }
+  }
+
+  // 腾讯文档 pending 任务的标题：作者名 + 正文摘要，截断到 ~40 字（供引导浮层展示）。
+  function txdocsTitle(main) {
+    if (!main) return '推文转发';
+    const name = main.name || main.handle || '';
+    const text = main.plainText ||
+      (main.segments ? main.segments.map((s) => s.text).join('') : '');
+    const n = String(name).trim();
+    const t = String(text).trim().replace(/\s+/g, ' ');
+    let s = n && t ? `${n}：${t}` : (n || t) || '推文转发';
+    if (s.length > 40) s = s.slice(0, 39) + '…';
+    return s;
   }
 
   // ---------- 小组件 ----------
