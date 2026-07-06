@@ -43,6 +43,33 @@
   #status { font-size: 13px; margin-left: 10px; }
   #status.ok { color: #00ba7c; }
   #status.err { color: #f4212e; }
+  .meta {
+    display: grid;
+    grid-template-columns: 96px 1fr;
+    gap: 8px 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    margin-top: 10px;
+  }
+  .meta .k { color: #536471; }
+  .meta .v { overflow-wrap: anywhere; }
+  .badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: #eff3f4;
+    color: #536471;
+    font-size: 12px;
+    font-weight: 700;
+    vertical-align: 1px;
+  }
+  .badge.warn { background: #ffe8ea; color: #f4212e; }
+  .badge.ok { background: #def1e8; color: #008a5c; }
+  #updateStatus { font-size: 13px; margin-left: 10px; }
+  #updateStatus.ok { color: #00ba7c; }
+  #updateStatus.err { color: #f4212e; }
+  a { color: #1d9bf0; text-decoration: none; }
+  a:hover { text-decoration: underline; }
   .actions { position: sticky; bottom: 0; background: #fff; padding: 16px 0; border-top: 1px solid #eff3f4; margin-top: 24px; }
 </style>
 </head>
@@ -111,6 +138,29 @@
     <label for="publishEndpoint">自定义服务器地址（自定义方式）</label>
     <input type="text" id="publishEndpoint" placeholder="https://你的域名/api/publish">
     <div class="hint">扩展会 POST <code>{ html }</code>，期望返回 <code>{ url }</code>。需在 manifest.json 的 host_permissions 里加上该域名并重新加载扩展。</div>
+  </div>
+
+  <h2>更新检测</h2>
+  <div class="row">
+    <label class="check"><input type="checkbox" id="updateCheckEnabled"> 自动检查 GitHub 最新版本</label>
+    <div class="hint">扩展会每隔约 6 小时读取 GitHub 上 main 分支的 manifest 版本号；发现新版本时，工具栏图标会显示 NEW。解压安装模式仍需你在 chrome://extensions/ 里点「刷新」或重新加载目录。</div>
+  </div>
+  <div class="row">
+    <label for="updateGithubToken">GitHub Token（可选）</label>
+    <input type="password" id="updateGithubToken" placeholder="github_pat_... / ghp_...">
+    <div class="hint">公开仓库可留空。若检查时报 404/403，说明 GitHub API 需要认证；填写一个只具备仓库读取权限的 token 即可。Token 只保存在本机浏览器里，并仅发送给 api.github.com。</div>
+    <div class="meta">
+      <div class="k">当前版本</div><div class="v" id="currentVersion">-</div>
+      <div class="k">GitHub 版本</div><div class="v" id="latestVersion">-</div>
+      <div class="k">最新提交</div><div class="v" id="latestCommit">-</div>
+      <div class="k">检查时间</div><div class="v" id="checkedAt">-</div>
+      <div class="k">状态</div><div class="v" id="updateSummary">-</div>
+    </div>
+  </div>
+  <div class="row">
+    <button id="checkUpdate" class="sec">检查更新</button>
+    <a id="openRepo" href="https://github.com/janauto/x-share" target="_blank" rel="noreferrer">打开 GitHub</a>
+    <span id="updateStatus"></span>
   </div>
 
   <div class="actions">

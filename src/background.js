@@ -16,7 +16,20 @@ const DEFAULTS = {
   publishTarget: 'none', // 'none' | 'gist' | 'custom'
   gistToken: '',
   publishEndpoint: '',
+  // 更新检测
+  updateCheckEnabled: true,
+  updateCheckIntervalHours: 6,
+  updateGithubToken: '',
 };
+
+const UPDATE_REPO = {
+  owner: 'janauto',
+  repo: 'x-share',
+  branch: 'main',
+  repoUrl: 'https://github.com/janauto/x-share',
+};
+const UPDATE_ALARM_NAME = 'xShareUpdateCheck';
+const MIN_UPDATE_INTERVAL_HOURS = 1;
 
 const SYS_PROMPT = `你是推文翻译引擎。用户会发来一个 JSON 对象 {"texts": ["...", ...]}，把数组里每一段文本翻译成自然、口语化的简体中文。
 规则：
@@ -42,6 +55,20 @@ function getCfg() {
 }
 
 chrome.action.onClicked.addListener(() => chrome.runtime.openOptionsPage());
+
+chrome.runtime.onInstalled.addListener(() => {
+  setupUpdateAlarm();
+  checkForUpdates({ silent: true });
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  setupUpdateAlarm();
+  refreshUpdateBadge();
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === UPDATE_ALARM_NAME) checkForUpdates({ silent: true });
+});
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
@@ -79,6 +106,21 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         }
         case 'publish': {
           sendResponse(await publishHtml(msg.html || ''));
+          break;
+        }
+        case 'getUpdateStatus': {
+          sendResponse(await getUpdateStatus());
+          break;
+        }
+        case 'checkUpdate': {
+          sendResponse(await checkForUpdates({ silent: false }));
+          break;
+        }
+        case 'setUpdateCheckEnabled': {
+          await chrome.storage.local.set({ updateCheckEnabled: !!msg.enabled });
+          await setupUpdateAlarm();
+          if (!msg.enabled) await setUpdateBadge(false);
+          sendResponse(await getUpdateStatus());
           break;
         }
         default:
@@ -237,4 +279,151 @@ async function publishCustom(html, endpoint) {
   try { data = await resp.json(); } catch (_) { /* 下面处理 */ }
   if (!data || !data.url) return { error: '服务器未返回 { url }' };
   return { url: data.url };
+}
+
+async function setupUpdateAlarm() {
+  const c = await getCfg();
+  await chrome.alarms.clear(UPDATE_ALARM_NAME);
+  if (c.updateCheckEnabled === false) return;
+  const periodInMinutes = Math.max(
+    MIN_UPDATE_INTERVAL_HOURS,
+    Number(c.updateCheckIntervalHours) || DEFAULTS.updateCheckIntervalHours
+  ) * 60;
+  chrome.alarms.create(UPDATE_ALARM_NAME, {
+    delayInMinutes: 2,
+    periodInMinutes,
+  });
+}
+
+async function getUpdateStatus() {
+  const c = await getCfg();
+  const stored = await chrome.storage.local.get({
+    updateStatus: null,
+    updateCheckEnabled: c.updateCheckEnabled !== false,
+  });
+  const status = stored.updateStatus || {};
+  return {
+    enabled: stored.updateCheckEnabled !== false,
+    currentVersion: chrome.runtime.getManifest().version,
+    repoUrl: UPDATE_REPO.repoUrl,
+    branch: UPDATE_REPO.branch,
+    ...status,
+  };
+}
+
+async function checkForUpdates({ silent } = { silent: true }) {
+  const c = await getCfg();
+  if (c.updateCheckEnabled === false && silent) {
+    await setUpdateBadge(false);
+    return getUpdateStatus();
+  }
+
+  const currentVersion = chrome.runtime.getManifest().version;
+  const checkedAt = new Date().toISOString();
+
+  try {
+    const latest = await fetchLatestGithubState(c.updateGithubToken || '');
+    const hasUpdate = compareVersions(latest.version, currentVersion) > 0;
+    const status = {
+      ok: true,
+      hasUpdate,
+      currentVersion,
+      latestVersion: latest.version,
+      latestCommit: latest.commit,
+      latestCommitUrl: latest.commitUrl,
+      checkedAt,
+      error: '',
+    };
+    await chrome.storage.local.set({ updateStatus: status });
+    await setUpdateBadge(hasUpdate);
+    return await getUpdateStatus();
+  } catch (e) {
+    const status = {
+      ok: false,
+      hasUpdate: false,
+      currentVersion,
+      checkedAt,
+      error: String((e && e.message) || e),
+    };
+    await chrome.storage.local.set({ updateStatus: status });
+    if (!silent) await setUpdateBadge(false);
+    return await getUpdateStatus();
+  }
+}
+
+async function fetchLatestGithubState(token) {
+  const manifestUrl = `https://api.github.com/repos/${UPDATE_REPO.owner}/${UPDATE_REPO.repo}/contents/manifest.json?ref=${UPDATE_REPO.branch}`;
+  const commitUrl = `https://api.github.com/repos/${UPDATE_REPO.owner}/${UPDATE_REPO.repo}/commits/${UPDATE_REPO.branch}`;
+  const headers = githubHeaders(token);
+
+  const [manifestResp, commitResp] = await Promise.all([
+    fetch(manifestUrl, { headers }),
+    fetch(commitUrl, { headers }),
+  ]);
+
+  if (!manifestResp.ok) throw new Error(githubError('manifest', manifestResp.status));
+  if (!commitResp.ok) throw new Error(githubError('commit', commitResp.status));
+
+  const manifestData = await manifestResp.json();
+  const manifestText = decodeGithubContent(manifestData.content || '');
+  const latestManifest = JSON.parse(manifestText);
+  if (!latestManifest.version) throw new Error('GitHub manifest 未包含 version');
+
+  const commitData = await commitResp.json();
+  return {
+    version: String(latestManifest.version),
+    commit: String(commitData.sha || '').slice(0, 7),
+    commitUrl: commitData.html_url || UPDATE_REPO.repoUrl,
+  };
+}
+
+function githubHeaders(token) {
+  const headers = {
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
+function githubError(target, status) {
+  if (status === 404) return `GitHub ${target} 404：仓库可能是私有/受限访问，请在设置页填写有读取权限的 GitHub Token`;
+  if (status === 403) return `GitHub ${target} 403：请求被限流或 Token 权限不足`;
+  return `GitHub ${target} ${status}`;
+}
+
+function decodeGithubContent(content) {
+  const normalized = String(content).replace(/\s/g, '');
+  const binary = atob(normalized);
+  const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+function compareVersions(a, b) {
+  const left = parseVersion(a);
+  const right = parseVersion(b);
+  for (let i = 0; i < Math.max(left.length, right.length); i += 1) {
+    const diff = (left[i] || 0) - (right[i] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+function parseVersion(version) {
+  return String(version)
+    .split(/[.-]/)
+    .map((part) => Number.parseInt(part, 10))
+    .map((num) => (Number.isFinite(num) ? num : 0));
+}
+
+async function refreshUpdateBadge() {
+  const status = await getUpdateStatus();
+  await setUpdateBadge(!!status.hasUpdate);
+}
+
+async function setUpdateBadge(hasUpdate) {
+  await chrome.action.setBadgeText({ text: hasUpdate ? 'NEW' : '' });
+  if (hasUpdate) {
+    await chrome.action.setBadgeBackgroundColor({ color: '#f4212e' });
+  }
 }

@@ -8,6 +8,7 @@
 - **自动选热门评论**：按点赞/转推/回复的热度自动选出前 N 条（默认 10，可改），之后仍可手动增减。
 - **生成网页**：导出一个自包含单文件 HTML（图片内联、原文/译文切换、移动端友好），可下载或一键发布成链接。
 - **敏感内容打码**：可选按规则（本地正则）或模型（LLM）屏蔽敏感文字，并给图片打马赛克，降低转发到微信被审核/封号的风险。
+- **GitHub 更新检测**：定时检查 main 分支最新版本，发现新版时在扩展图标显示 `NEW`，并可在设置页手动检查。
 
 没有服务器、没有账号体系，抓取与渲染都发生在你自己的浏览器里；唯一的外部依赖是 DeepSeek API（可选，用于翻译和「模型打码」）。
 
@@ -36,7 +37,13 @@ cd x-share
 点击工具栏里的扩展图标打开设置页，填入 DeepSeek API Key（在 [platform.deepseek.com](https://platform.deepseek.com) 创建），点「测试翻译」确认连通。
 设置页还可改「API 地址」指向任意 OpenAI 兼容服务（换域名后需同步在 `manifest.json` 的 `host_permissions` 里加上该域名再刷新扩展）。
 
-### 4.（可选）打包分发
+### 4.（可选）检查更新
+
+设置页的「更新检测」会每隔约 6 小时读取 GitHub 上 main 分支的 `manifest.json` 版本号，并展示最新提交。若 GitHub 版本高于当前扩展版本，工具栏图标会显示 `NEW`。公开仓库无需配置；若 GitHub API 返回 404/403，可在设置页填写一个只具备仓库读取权限的 GitHub Token。
+
+> Chrome 不允许解压安装的扩展自己从 GitHub 下载并执行新代码；因此本功能只负责提醒。更新源码仍需在本仓库目录执行 `git pull`，然后到 `chrome://extensions/` 点扩展卡片上的「刷新」。
+
+### 5.（可选）打包分发
 
 要把扩展发给别人，或上传 Chrome 应用商店，用打包脚本生成 zip：
 
@@ -98,14 +105,14 @@ manifest.json               MV3 清单
 LICENSE                     MIT 许可证
 scripts/package.sh          打包成可分发 zip
 vendor/html2canvas.min.js   第三方：DOM 逐元素栅格化（MIT）
-src/background.js           后台：翻译 / 模型打码 / Gist·自定义发布 / twimg 图片转 data URL
+src/background.js           后台：翻译 / 模型打码 / Gist·自定义发布 / 更新检测 / twimg 图片转 data URL
 src/content/extract.js      DOM 提取 + 热度解析（data-testid 锚点，改版时先查这里）
 src/content/redact.js       敏感内容打码：规则正则、PII、图片像素化
 src/content/card.js         双语长图构建（内联样式）+ html2canvas → PNG
 src/content/webpage.js      自包含网页 HTML 构建
 src/content/content.js      主流程：悬浮按钮、评论勾选/自动选、生成与预览
 src/content/content.css     页面内 UI 样式
-src/options/options.html    设置页（翻译 / 敏感打码 / 网页发布后端）
+src/options/options.html    设置页（翻译 / 敏感打码 / 网页发布后端 / 更新检测）
 src/options/options.js      设置页逻辑：读写 chrome.storage、测试翻译
 icons/                      扩展图标
 ```
