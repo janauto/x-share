@@ -8,13 +8,15 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["storage", "alarms"],
+  "permissions": ["storage", "alarms", "unlimitedStorage"],
   "host_permissions": [
     "https://pbs.twimg.com/*",
     "https://video.twimg.com/*",
     "https://abs.twimg.com/*",
     "https://api.deepseek.com/*",
-    "https://api.github.com/*"
+    "https://api.github.com/*",
+    "https://*.tcloudbase.com/*",
+    "https://*.tcloudbaseapp.com/*"
   ],
   "background": {
     "service_worker": "src/background.js"
@@ -31,6 +33,11 @@
         "src/content/content.js"
       ],
       "css": ["src/content/content.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://docs.qq.com/*"],
+      "js": ["src/content/txdocs.js"],
       "run_at": "document_idle"
     }
   ],

@@ -19,6 +19,7 @@
     hasKey: false,
     translateDefault: true,
     cfg: {
+      autoHotDefault: true, autoHotN: 10,
       redactEnabled: false, redactMode: 'rules', redactTerms: '',
       redactPII: false, redactImages: false,
       publishTarget: 'none', publishConfigured: false,
@@ -48,6 +49,8 @@
           state.hasKey = !!c.hasKey;
           state.translateDefault = c.translateDefault !== false;
           state.cfg = {
+            autoHotDefault: c.autoHotDefault !== false,
+            autoHotN: c.autoHotN || 10,
             redactEnabled: !!c.redactEnabled,
             redactMode: c.redactMode || 'rules',
             redactTerms: c.redactTerms || '',
@@ -78,6 +81,12 @@
   // ---------- 选择模式 ----------
 
   function enterSelection() {
+    // X 长文(Article)是完全不同的正文结构，提取器认不出正文——
+    // 不拦截的话会静默生成「只有作者+几张图、正文全丢」的残缺卡片，比报错更糟。
+    if (XS.isArticlePage()) {
+      toast('这是 X 长文（Article），暂不支持——正文会被漏掉，见 README 路线图');
+      return;
+    }
     const main = XS.findMainArticle();
     if (!main) { toast('还没找到推文，等页面加载完成后再试'); return; }
     const data = XS.extractTweet(main);
@@ -93,7 +102,11 @@
     decorateArticles();
     attachObserver();
 
-    toast('点击评论勾选，或用「🔥 自动选热门」一键筛选');
+    if (state.cfg.autoHotDefault) {
+      autoSelectHot(); // 默认进入即自动按热度选取，之后仍可手动增减
+    } else {
+      toast('点击评论勾选，或用「🔥 自动选热门」一键筛选');
+    }
   }
 
   function exitSelection() {
@@ -187,8 +200,14 @@
     barAutoN.className = 'xs-num';
     barAutoN.min = '1';
     barAutoN.max = String(MAX_REPLIES);
-    barAutoN.value = String(DEFAULT_AUTO_N);
+    barAutoN.value = String(state.cfg.autoHotN || DEFAULT_AUTO_N);
     barAutoN.title = '自动选取的条数';
+    barAutoN.addEventListener('change', () => {
+      const n = clamp(parseInt(barAutoN.value, 10) || DEFAULT_AUTO_N, 1, MAX_REPLIES);
+      barAutoN.value = String(n);
+      state.cfg.autoHotN = n;
+      chrome.storage.local.set({ autoHotN: n }); // 记住条数，下次沿用
+    });
     autoWrap.appendChild(barAutoN);
     autoWrap.appendChild(document.createTextNode('条'));
     bar.appendChild(autoWrap);
@@ -201,8 +220,15 @@
     );
     bar.appendChild(barTrans.label);
 
-    barRedact = mkCheck('敏感打码', state.cfg.redactEnabled, false,
-      '按设置里的规则/模型屏蔽敏感文字，可选给图片打码');
+    const isModel = state.cfg.redactMode === 'model';
+    barRedact = mkCheck(
+      `敏感打码（${isModel ? '模型' : '规则'}）`,
+      state.cfg.redactEnabled,
+      false,
+      isModel
+        ? '用模型(LLM)识别并屏蔽敏感文字；可在设置里改为规则模式'
+        : '按设置里的屏蔽词表(正则)屏蔽敏感文字；未填词表则不会改动内容。可在设置里改为模型模式'
+    );
     bar.appendChild(barRedact.label);
 
     const genImg = document.createElement('button');
@@ -308,8 +334,10 @@
     await runGenerate(async (payload) => {
       setOverlay('生成网页…');
       const html = XS.buildWebpageHtml(payload);
+      const rich = XS.buildRichHtml(payload);
+      const plain = XS.buildPlainText(payload);
       hideOverlay();
-      showWebpagePreview(html, payload.note);
+      showWebpagePreview(html, rich, plain, payload.note);
     });
   }
 
@@ -352,25 +380,47 @@
     let redactNote = null;
     if (barRedact.input.checked) {
       setOverlay('敏感内容处理…');
-      if (state.cfg.redactMode === 'model') redactNote = await redactModel(clone);
-      else redactRules(clone);
-      if (state.cfg.redactImages) await pixelateImages(clone);
+      if (state.cfg.redactMode === 'model') {
+        const err = await redactModel(clone);
+        redactNote = err || '已用模型打码（DeepSeek 识别）';
+      } else {
+        redactNote = redactRules(clone).note;
+      }
+      if (state.cfg.redactImages) {
+        await pixelateImages(clone);
+        redactNote = joinNotes(redactNote, '图片已打码');
+      }
     }
     clone.redactNote = redactNote;
     return clone;
   }
 
+  // 返回 { note }：让用户看得见「打了几处 / 为何没效果」，而不是静默无操作
   function redactRules(payload) {
     const terms = XS.compileRedactTerms(state.cfg.redactTerms, state.cfg.redactPII);
-    if (!terms.length) return;
+    if (!terms.length) {
+      return { note: '⚠️ 已开「规则打码」但未配置屏蔽词/PII，未改动任何内容（去设置页填词表）' };
+    }
+    let hits = 0;
+    const one = (str) => { const r = XS.redactTextCount(str, terms); hits += r.hits; return r.text; };
+    const maskSegs = (segs) => segs.map((s) => ({ type: s.type, text: one(s.text) }));
     const walk = (d) => {
       if (!d) return;
-      if (d.segments) d.segments = d.segments.map((s) => ({ type: s.type, text: XS.redactText(s.text, terms) }));
-      if (d.translation) d.translation = XS.redactText(d.translation, terms);
+      // 渲染走 blocks，所以按块打码；再从打码后的块回填 d.segments（供纯文本/富文本兜底，且只计一次数）
+      if (d.blocks && d.blocks.length) {
+        d.blocks = d.blocks.map((b) => (b.type === 'text' ? { type: 'text', segments: maskSegs(b.segments) } : b));
+        const agg = [];
+        for (const b of d.blocks) if (b.type === 'text') for (const s of b.segments) agg.push(s);
+        d.segments = agg;
+      } else if (d.segments) {
+        d.segments = maskSegs(d.segments);
+      }
+      if (d.translation) d.translation = one(d.translation);
       if (d.quote) walk(d.quote);
     };
     walk(payload.main);
     payload.replies.forEach(walk);
+    return { note: hits ? `已按规则打码 ${hits} 处` : '规则打码：本次内容未命中屏蔽词' };
   }
 
   // 模型屏蔽：整段送模型返回打码版；被改写的段落丢失实体高亮（合并为单段），可接受
@@ -400,8 +450,19 @@
     items.forEach((it, i) => {
       const r = resp.redacted[i];
       if (r == null) return;
-      if (it.kind === 'orig') it.d.segments = [{ type: 'text', text: r }];
-      else it.d.translation = r;
+      if (it.kind === 'orig') {
+        it.d.segments = [{ type: 'text', text: r }];
+        // 同步有序块：把打码后的整段放进第一个文本块，其余文本块清空（媒体/引用块保持原位）
+        if (it.d.blocks && it.d.blocks.length) {
+          let placed = false;
+          it.d.blocks = it.d.blocks.map((b) => {
+            if (b.type !== 'text') return b;
+            if (!placed) { placed = true; return { type: 'text', segments: [{ type: 'text', text: r }] }; }
+            return { type: 'text', segments: [] };
+          });
+          if (!placed) it.d.blocks.unshift({ type: 'text', segments: [{ type: 'text', text: r }] });
+        }
+      } else it.d.translation = r;
     });
     return null;
   }
@@ -411,7 +472,7 @@
     const walk = (d) => {
       if (!d) return;
       if (d.photosData) {
-        d.photosData.forEach((u, i) => tasks.push(XS.pixelateDataUrl(u).then((p) => { d.photosData[i] = p; })));
+        d.photosData.forEach((u, i) => { if (u) tasks.push(XS.pixelateDataUrl(u).then((p) => { d.photosData[i] = p; })); });
       }
       if (d.videoPosterData) tasks.push(XS.pixelateDataUrl(d.videoPosterData).then((p) => { d.videoPosterData = p; }));
       if (d.quote) walk(d.quote);
@@ -452,15 +513,19 @@
   async function inlineImages(d) {
     if (!d || d.__inlined) return;
     const tasks = [];
-    if (d.avatar) tasks.push(fetchDataUrl(d.avatar).then((u) => { d.avatarData = u; }));
-    const photosData = [];
-    (d.photos || []).slice(0, 4).forEach((p, i) => {
-      tasks.push(fetchDataUrl(p).then((u) => { if (u) photosData[i] = u; }));
+    // 头像：先试升级后的 _200x200，失败回退原始 DOM 尺寸（修复头像不显示）
+    const avaUrls = [d.avatar, d.avatarSrc].filter(Boolean);
+    if (avaUrls.length) tasks.push(fetchFirstDataUrl(avaUrls).then((u) => { d.avatarData = u; }));
+    // photosData 必须与 photos 同下标对齐（失败填 null）——有序块按 idx 取图，不能压缩
+    const photos = (d.photos || []).slice(0, 4);
+    const photosData = new Array(photos.length).fill(null);
+    photos.forEach((p, i) => {
+      tasks.push(fetchDataUrl(p).then((u) => { photosData[i] = u || null; }));
     });
     if (d.videoPoster) tasks.push(fetchDataUrl(d.videoPoster).then((u) => { d.videoPosterData = u; }));
     if (d.quote) tasks.push(inlineImages(d.quote));
     await Promise.all(tasks);
-    d.photosData = photosData.filter(Boolean);
+    d.photosData = photosData;
     d.__inlined = true;
   }
 
@@ -471,6 +536,15 @@
     } catch (_) {
       return null;
     }
+  }
+
+  // 依次尝试多个候选 URL，返回第一个成功的 data URL（头像升级变体失效时兜底）
+  async function fetchFirstDataUrl(urls) {
+    for (const u of urls) {
+      const data = await fetchDataUrl(u);
+      if (data) return data;
+    }
+    return null;
   }
 
   // ---------- 预览弹窗 ----------
@@ -545,7 +619,7 @@
     copyBlob(blob).then((ok) => { if (ok && !note) m.setStatus('已自动复制，去微信里粘贴即可 ✓'); });
   }
 
-  function showWebpagePreview(html, note) {
+  function showWebpagePreview(html, rich, plain, note) {
     const objUrl = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
     const m = makeModal('转发网页已生成', () => URL.revokeObjectURL(objUrl));
 
@@ -554,8 +628,8 @@
     const kb = Math.round(html.length / 1024);
     info.innerHTML =
       `<p>已生成一个自包含网页（${kb} KB，含内联图片，可离线打开）。</p>` +
-      `<p class="hint">发给微信好友时：若配置了发布后端可「发布并复制链接」；也可「下载 HTML」自行托管。` +
-      `注意 GitHub/多数境外托管在中国大陆可能打不开，境内可访问需自建香港服务器（见 README）。</p>`;
+      `<p class="hint"><b>推荐「复制图文」</b>：直接粘贴进公众号后台 / 语雀 / 飞书 / 腾讯文档 / 印象笔记，由这些平台生成链接——免服务器、免备案、微信最友好。` +
+      `<br>「发布并复制链接」走你配置的后端；Gist / 多数境外托管在大陆常打不开且易被微信拦截，仅适合境外接收者或存档。境内稳定链接建议自建香港服务器或腾讯云 CloudBase（见 README）。</p>`;
     m.panel.appendChild(info);
 
     // 新标签预览（顶层导航到 blob，不受页面 frame-src CSP 限制）
@@ -572,8 +646,40 @@
       m.setStatus('已下载 ✓');
     }));
 
+    m.foot.appendChild(btn('pri', '复制图文', async () => {
+      const ok = await copyRich(rich, plain);
+      m.setStatus(ok
+        ? '图文已复制 ✓ 去公众号/语雀/飞书/腾讯文档/印象笔记粘贴，由平台生成链接'
+        : '复制失败，请改用「下载 HTML」');
+    }));
+
+    // 发布到腾讯文档（引导式半自动）：无条件显示，不依赖 publishTarget 配置。
+    // 主通道是系统剪贴板——这里在用户手势内用 copyRich 把图文写入剪贴板，再存 pending
+    // 任务、开 docs.qq.com/desktop 新标签，由 txdocs.js 挂引导浮层、按状态机推进。
+    m.foot.appendChild(btn('pri2', '发布到腾讯文档', async () => {
+      const ok = await copyRich(rich, plain);
+      if (!ok) { m.setStatus('复制失败，无法发布到腾讯文档（图文需先进剪贴板）'); return; }
+      try {
+        await chrome.storage.local.set({
+          xsTxdocsPending: {
+            html: rich,
+            plain: plain || '',
+            title: txdocsTitle(state.mainData),
+            ts: Date.now(),
+          },
+        });
+      } catch (e) {
+        m.setStatus('准备失败：' + ((e && e.message) || e));
+        return;
+      }
+      window.open('https://docs.qq.com/desktop', '_blank', 'noopener');
+      m.setStatus('已复制图文，请在新打开的腾讯文档标签按右下角向导操作（登录后按一次 ⌘V 粘贴）');
+    }));
+
     if (state.cfg.publishTarget !== 'none') {
-      const label = state.cfg.publishTarget === 'gist' ? '发布到 Gist 并复制链接' : '发布并复制链接';
+      const label = state.cfg.publishTarget === 'gist' ? '发布到 Gist 并复制链接'
+        : state.cfg.publishTarget === 'cloudbase' ? '发布到 CloudBase 并复制链接'
+        : '发布并复制链接';
       const pub = btn('pri', label, async () => {
         if (!state.cfg.publishConfigured) { m.setStatus('发布后端未配置好，请到设置页填写'); return; }
         pub.disabled = true;
@@ -622,6 +728,34 @@
     } catch (_) {
       return false;
     }
+  }
+
+  // 富文本复制：同时写 text/html 与 text/plain，粘贴进公众号/文档时保留排版与图片
+  async function copyRich(html, plain) {
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([plain || ''], { type: 'text/plain' }),
+        }),
+      ]);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // 腾讯文档 pending 任务的标题：作者名 + 正文摘要，截断到 ~40 字（供引导浮层展示）。
+  function txdocsTitle(main) {
+    if (!main) return '推文转发';
+    const name = main.name || main.handle || '';
+    const text = main.plainText ||
+      (main.segments ? main.segments.map((s) => s.text).join('') : '');
+    const n = String(name).trim();
+    const t = String(text).trim().replace(/\s+/g, ' ');
+    let s = n && t ? `${n}：${t}` : (n || t) || '推文转发';
+    if (s.length > 40) s = s.slice(0, 39) + '…';
+    return s;
   }
 
   // ---------- 小组件 ----------

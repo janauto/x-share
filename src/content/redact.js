@@ -48,13 +48,18 @@
 
   // 用 █ 覆盖命中的可见字符（保留空白，长度对齐）
   XS.redactText = function (str, terms) {
-    if (!str || !terms || !terms.length) return str;
-    let out = str;
+    return XS.redactTextCount(str, terms).text;
+  };
+
+  // 同上，但额外返回命中次数，供「共打码 N 处」提示（让用户看得见效果）
+  XS.redactTextCount = function (str, terms) {
+    if (!str || !terms || !terms.length) return { text: str, hits: 0 };
+    let out = str, hits = 0;
     for (const re of terms) {
       re.lastIndex = 0;
-      out = out.replace(re, (m) => m.replace(/\S/g, '█'));
+      out = out.replace(re, (m) => { hits++; return m.replace(/\S/g, '█'); });
     }
-    return out;
+    return { text: out, hits };
   };
 
   // 图片像素化打码：缩小再放大，制造马赛克。data URL 输入不会污染画布。

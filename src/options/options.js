@@ -3,6 +3,8 @@ const DEFAULTS = {
   apiBase: 'https://api.deepseek.com',
   model: 'deepseek-chat',
   translateDefault: true,
+  autoHotDefault: true,
+  autoHotN: 10,
   redactEnabled: false,
   redactMode: 'rules',
   redactTerms: '',
@@ -35,6 +37,8 @@ async function load() {
   $('apiBase').value = c.apiBase;
   $('model').value = c.model;
   $('translateDefault').checked = c.translateDefault !== false;
+  $('autoHotDefault').checked = c.autoHotDefault !== false;
+  $('autoHotN').value = c.autoHotN || 10;
   $('redactEnabled').checked = !!c.redactEnabled;
   $('redactMode').value = c.redactMode || 'rules';
   $('redactTerms').value = c.redactTerms || '';
@@ -54,6 +58,8 @@ async function save() {
     apiBase: $('apiBase').value.trim() || DEFAULTS.apiBase,
     model: $('model').value.trim() || DEFAULTS.model,
     translateDefault: $('translateDefault').checked,
+    autoHotDefault: $('autoHotDefault').checked,
+    autoHotN: Math.min(20, Math.max(1, parseInt($('autoHotN').value, 10) || 10)),
     redactEnabled: $('redactEnabled').checked,
     redactMode: $('redactMode').value,
     redactTerms: $('redactTerms').value,

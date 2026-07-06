@@ -95,6 +95,17 @@
     <label class="check"><input type="checkbox" id="translateDefault" checked> 生成时默认勾选「附中文翻译」</label>
   </div>
 
+  <h2>评论</h2>
+  <div class="row">
+    <label class="check"><input type="checkbox" id="autoHotDefault" checked> 进入选择模式时，自动选取热门评论</label>
+    <div class="hint">开启后，点悬浮按钮进入选择模式会自动向下加载评论、按热度（点赞/转推/回复）选出前 N 条，之后仍可在操作栏手动增减。关掉则进入时不选、由你手动点或按「🔥 自动选热门」。</div>
+  </div>
+  <div class="row">
+    <label for="autoHotN">自动选取条数 N</label>
+    <input type="text" id="autoHotN" placeholder="10">
+    <div class="hint">默认 10，最多 20。也可在操作栏里临时改，改动会记住。</div>
+  </div>
+
   <h2>敏感内容屏蔽 / 打码</h2>
   <div class="row">
     <label class="check"><input type="checkbox" id="redactEnabled"> 生成时默认勾选「敏感打码」</label>
@@ -121,13 +132,17 @@
 
   <h2>网页发布后端（「生成网页」用）</h2>
   <div class="row">
+    <div class="hint">💡「生成网页」预览里的<b>「发布到腾讯文档」</b>是<b>免配置</b>的引导式半自动，<b>不需要在这里设置</b>：点它会把图文复制到剪贴板并打开 <code>docs.qq.com</code>，右下角向导带你新建文档、按一次 ⌘V 粘贴、设为「任何人可查看」并取回链接。链接是 <code>docs.qq.com</code> 域、<b>微信内打开最友好</b>（需先登录腾讯文档）。下面这些后端只影响「发布并复制链接」按钮。</div>
+  </div>
+  <div class="row">
     <label for="publishTarget">发布方式</label>
     <select id="publishTarget">
-      <option value="none">不发布（只下载 HTML / 新标签预览）</option>
-      <option value="gist">GitHub Gist（自动，无需服务器）</option>
-      <option value="custom">自定义服务器（POST 到你的端点）</option>
+      <option value="none">不发布（只下载 HTML / 复制图文 / 新标签预览）</option>
+      <option value="cloudbase">腾讯云 CloudBase（大陆可访问，推荐；需备案自定义域名）</option>
+      <option value="custom">自定义服务器（POST 到你的端点，如自建香港小站）</option>
+      <option value="gist">GitHub Gist（境外/存档用，大陆多打不开）</option>
     </select>
-    <div class="hint">⚠️ GitHub / gist 在中国大陆多不可访问，适合非墙内接收者或存档。境内可访问需自建香港服务器（免备案），用「自定义服务器」。</div>
+    <div class="hint">调研结论：平台笔记类（语雀/飞书/印象笔记/公众号）都无法免费免登录一键产出「大陆可访问」链接。境内稳定链接的正解是<b>自建后端</b>：<b>CloudBase</b>（见仓库 <code>server/cloudbase-publish/</code> 可直接部署的云函数）或自建<b>香港</b>小站。GitHub/gist 在大陆多不可访问、微信易拦，仅适合墙外接收者/存档。发微信最稳的仍是<b>图片</b>或<b>复制图文</b>。</div>
   </div>
   <div class="row">
     <label for="gistToken">GitHub Token（Gist 方式）</label>
@@ -135,9 +150,9 @@
     <div class="hint">在 github.com/settings/tokens 创建，勾选 <code>gist</code> 权限即可。仅存本机。</div>
   </div>
   <div class="row">
-    <label for="publishEndpoint">自定义服务器地址（自定义方式）</label>
-    <input type="text" id="publishEndpoint" placeholder="https://你的域名/api/publish">
-    <div class="hint">扩展会 POST <code>{ html }</code>，期望返回 <code>{ url }</code>。需在 manifest.json 的 host_permissions 里加上该域名并重新加载扩展。</div>
+    <label for="publishEndpoint">发布端点地址（自定义服务器 / CloudBase 云函数）</label>
+    <input type="text" id="publishEndpoint" placeholder="https://&lt;env-id&gt;.service.tcloudbase.com/publish 或 https://你的域名/api/publish">
+    <div class="hint">扩展会 POST <code>{ html }</code>，期望返回 <code>{ url }</code>。CloudBase 与 <code>*.tcloudbase.com</code> 域名已预置在 host_permissions；换成自建域名需把该域名加进 manifest.json 的 host_permissions 再重新加载扩展。⚠️ CloudBase 默认 <code>*.tcloudbase.com</code> 域名在微信内可能走「访问提示中间页」，正式分享请在 CloudBase 绑定<b>已备案</b>自定义域名（设为云函数的 <code>PUBLIC_BASE</code> 环境变量）。</div>
   </div>
 
   <h2>更新检测</h2>

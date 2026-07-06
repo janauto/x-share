@@ -9,6 +9,11 @@
 
   XS.isStatusPage = () => ID_RE.test(location.pathname);
 
+  // X 长文（Article）用完全不同的正文结构渲染（标题+富文本，不在 tweetText 里），
+  // 此锚点是长文页独有的可靠标记。当前提取器认不出长文正文，
+  // 若不拦截会静默产出「只有作者+几张图、正文全丢」的残缺卡片。
+  XS.isArticlePage = () => !!document.querySelector('[data-testid="twitter-article-title"]');
+
   XS.locationTweetId = () => {
     const m = location.pathname.match(ID_RE);
     return m ? m[1] : null;
@@ -51,6 +56,47 @@
     const last = out[out.length - 1];
     if (last && last.type === type) last.text += text;
     else out.push({ type, text });
+  }
+
+  // 按文档顺序把推文内容切成有序块：文本 / 图片组 / 视频 / 引用。
+  // 关键：X 的图文本可以「文字→图→文字」穿插（长推文/展开后），
+  // 旧做法把「所有文字」和「所有图片」拆成两个平铺数组，渲染时图片一律甩到末尾，
+  // 位置就错了。这里保留原始文档顺序，渲染端按块顺序输出即可归位。
+  // photos 数组同时被填充（扁平，供 inlineImages 抓图），块里存的是它的下标。
+  function orderedBlocks(scope, quoteEl, photos) {
+    const blocks = [];
+    let group = null;
+    const flush = () => { if (group && group.length) blocks.push({ type: 'photos', idx: group }); group = null; };
+    const visit = (node) => {
+      if (node.nodeType !== 1) return;
+      if (quoteEl && node === quoteEl) { flush(); blocks.push({ type: 'quote' }); return; } // 不下钻引用内部
+      const tid = node.getAttribute && node.getAttribute('data-testid');
+      if (tid === 'tweetText') {
+        flush();
+        const segs = [];
+        walkSegments(node, segs);
+        blocks.push({ type: 'text', segments: segs });
+        return;
+      }
+      if (tid === 'tweetPhoto') {
+        const img = node.querySelector('img');
+        if (img && img.src && photos.length < 4) { // X 单条最多 4 图
+          const i = photos.length;
+          photos.push(upgradePhoto(img.src));
+          (group = group || []).push(i);
+        }
+        return; // 不再下钻，避免重复
+      }
+      if (node.tagName === 'VIDEO') {
+        flush();
+        blocks.push({ type: 'video', poster: (node.poster && /^https?:/.test(node.poster)) ? node.poster : null });
+        return;
+      }
+      for (const c of node.childNodes) visit(c);
+    };
+    for (const c of scope.childNodes) visit(c);
+    flush();
+    return blocks;
   }
 
   // 引用推文容器：article 内可导航的 div[role="link"]，且里面有推文内容
@@ -137,13 +183,14 @@
   function extractFrom(scope, isQuote) {
     const quoteEl = isQuote ? null : findQuote(scope);
 
-    let textEl = null;
-    for (const el of scope.querySelectorAll('[data-testid="tweetText"]')) {
-      if (!quoteEl || !quoteEl.contains(el)) { textEl = el; break; }
-    }
+    // 有序内容块 + 派生的兼容字段（聚合文本 / 扁平图片 / 视频）
+    const photos = [];
+    const blocks = orderedBlocks(scope, quoteEl, photos);
     const segments = [];
-    if (textEl) walkSegments(textEl, segments);
+    for (const b of blocks) if (b.type === 'text') for (const s of b.segments) pushSeg(segments, s.type, s.text);
     const plainText = segments.map((s) => s.text).join('');
+    let hasVideo = false, videoPoster = null;
+    for (const b of blocks) if (b.type === 'video') { hasVideo = true; if (b.poster) videoPoster = b.poster; break; }
 
     let name = '', handle = '';
     for (const un of scope.querySelectorAll('[data-testid="User-Name"]')) {
@@ -158,24 +205,11 @@
       break;
     }
 
-    let avatar = null;
+    let avatar = null, avatarSrc = null;
     for (const img of scope.querySelectorAll('img[src*="profile_images"]')) {
       if (quoteEl && quoteEl.contains(img)) continue;
-      avatar = upgradeAvatar(img.src);
-      break;
-    }
-
-    const photos = [];
-    for (const img of scope.querySelectorAll('[data-testid="tweetPhoto"] img')) {
-      if (quoteEl && quoteEl.contains(img)) continue;
-      if (img.src) photos.push(upgradePhoto(img.src));
-    }
-
-    let hasVideo = false, videoPoster = null;
-    for (const v of scope.querySelectorAll('video')) {
-      if (quoteEl && quoteEl.contains(v)) continue;
-      hasVideo = true;
-      if (v.poster && /^https?:/.test(v.poster)) videoPoster = v.poster;
+      avatarSrc = img.src;             // 原始 DOM 尺寸，作升级失败时的回退
+      avatar = upgradeAvatar(img.src); // 升级到 _200x200；部分头像无此变体，故保留原始 src 兜底
       break;
     }
 
@@ -189,8 +223,8 @@
     }
 
     const d = {
-      id, permalink, name, handle, avatar, segments, plainText,
-      photos, hasVideo, videoPoster, datetime,
+      id, permalink, name, handle, avatar, avatarSrc, segments, plainText,
+      photos, blocks, hasVideo, videoPoster, datetime,
       quote: null, translation: null,
     };
     if (quoteEl) d.quote = extractFrom(quoteEl, true);
@@ -225,5 +259,19 @@
     if (!t) return false;
     const cjk = (t.match(/[一-鿿㐀-䶿]/g) || []).length;
     return cjk / t.length < 0.25;
+  };
+
+  // 头像加载失败时的「字母头像」回退：取名字/账号首字 + 稳定配色
+  XS.avatarInitial = function (name, handle) {
+    const s = (name || handle || '').trim().replace(/^@+/, ''); // 账号形如 @bob，去掉前导 @ 再取首字
+    const ch = s ? [...s][0] : '';
+    return ch ? ch.toUpperCase() : '#';
+  };
+  XS.avatarColor = function (seed) {
+    const palette = ['#1d9bf0', '#f4212e', '#00ba7c', '#ffad1f', '#7856ff', '#f91880', '#ff7a00'];
+    let h = 0;
+    const s = seed || '';
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return palette[h % palette.length];
   };
 })();

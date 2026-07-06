@@ -56,6 +56,23 @@
     return `width:${size}px;height:${size}px;border-radius:50%;flex:none;background:#eff3f4;object-fit:cover;`;
   }
 
+  // 有内联头像用 <img>；没有则渲染「字母头像」，避免空白灰圈（html2canvas 也能栅格化 div）
+  function avatarNode(d, size) {
+    if (d && d.avatarData) {
+      const img = el('img', avatarCss(size));
+      img.src = d.avatarData;
+      return img;
+    }
+    const box = el(
+      'div',
+      avatarCss(size) +
+        'display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;' +
+        `font-size:${Math.round(size * 0.44)}px;background:${XS.avatarColor((d && (d.handle || d.name)) || '')};`
+    );
+    box.textContent = XS.avatarInitial(d && d.name, d && d.handle);
+    return box;
+  }
+
   function el(tag, css, text) {
     const e = document.createElement(tag);
     if (css) e.style.cssText = css;
@@ -86,55 +103,70 @@
     return grid;
   }
 
-  // 正文 + 译文 + 图片 + 视频 + 引用，按场景 ctx 渲染
-  function textBlocks(parent, d, ctx, opts) {
-    if (d.segments && d.segments.length) {
-      const t = el('div', ctx.text(!!d.translation));
-      segmentsToNode(t, d.segments);
-      parent.appendChild(t);
+  // 有序内容块：优先用 d.blocks（保留文档顺序，图片不再被甩到末尾），
+  // 无 blocks 时回退旧顺序（文本→图→视频→引用）。
+  function blocksOf(d) {
+    if (d.blocks && d.blocks.length) return d.blocks;
+    const b = [];
+    if (d.segments && d.segments.length) b.push({ type: 'text', segments: d.segments });
+    if (d.photosData && d.photosData.some(Boolean)) b.push({ type: 'photos', all: true });
+    if (d.hasVideo) b.push({ type: 'video' });
+    if (d.quote) b.push({ type: 'quote' });
+    return b;
+  }
+
+  function blockPhotos(d, b) {
+    const arr = d.photosData || [];
+    const picked = b.all ? arr : (b.idx || []).map((i) => arr[i]);
+    return picked.filter(Boolean);
+  }
+
+  function appendVideo(parent, d) {
+    if (d.videoPosterData) {
+      const v = el('div', 'margin-top:14px;position:relative;border-radius:14px;overflow:hidden;');
+      const img = el('img', 'width:100%;display:block;');
+      img.src = d.videoPosterData;
+      v.appendChild(img);
+      const play = el('div', 'position:absolute;left:50%;top:50%;width:64px;height:64px;margin:-32px 0 0 -32px;border-radius:50%;background:rgba(0,0,0,0.55);');
+      play.appendChild(el('div', 'position:absolute;left:24px;top:17px;width:0;height:0;border-left:22px solid #ffffff;border-top:14px solid transparent;border-bottom:14px solid transparent;'));
+      v.appendChild(play);
+      parent.appendChild(v);
+      parent.appendChild(el('div', 'margin-top:6px;font-size:12.5px;color:#8b98a5;', '🎬 视频内容 · 观看请打开底部原文链接'));
+    } else {
+      parent.appendChild(el('div', 'box-sizing:border-box;margin-top:14px;border:1px solid #e1e8ed;border-radius:14px;padding:18px;font-size:14px;color:#536471;background:#f7f9f9;', '🎬 此推文包含视频，观看请打开底部原文链接'));
     }
-    if (d.translation) parent.appendChild(el('div', ctx.trans, d.translation));
-    if (d.photosData && d.photosData.length) parent.appendChild(photoGrid(d.photosData, ctx));
-    if (d.hasVideo) {
-      if (d.videoPosterData) {
-        const v = el('div', 'margin-top:14px;position:relative;border-radius:14px;overflow:hidden;');
-        const img = el('img', 'width:100%;display:block;');
-        img.src = d.videoPosterData;
-        v.appendChild(img);
-        const play = el(
-          'div',
-          'position:absolute;left:50%;top:50%;width:64px;height:64px;margin:-32px 0 0 -32px;border-radius:50%;background:rgba(0,0,0,0.55);'
-        );
-        play.appendChild(
-          el(
-            'div',
-            'position:absolute;left:24px;top:17px;width:0;height:0;border-left:22px solid #ffffff;border-top:14px solid transparent;border-bottom:14px solid transparent;'
-          )
-        );
-        v.appendChild(play);
-        parent.appendChild(v);
-        parent.appendChild(el('div', 'margin-top:6px;font-size:12.5px;color:#8b98a5;', '🎬 视频内容 · 观看请打开底部原文链接'));
-      } else {
-        parent.appendChild(
-          el(
-            'div',
-            'box-sizing:border-box;margin-top:14px;border:1px solid #e1e8ed;border-radius:14px;padding:18px;font-size:14px;color:#536471;background:#f7f9f9;',
-            '🎬 此推文包含视频，观看请打开底部原文链接'
-          )
-        );
+  }
+
+  // 正文 + 译文 + 图片 + 视频 + 引用，按块顺序渲染
+  function textBlocks(parent, d, ctx, opts) {
+    let transDone = false;
+    const emitTrans = () => {
+      if (!transDone && d.translation) { parent.appendChild(el('div', ctx.trans, d.translation)); transDone = true; }
+    };
+    for (const b of blocksOf(d)) {
+      if (b.type === 'text') {
+        if (b.segments && b.segments.length) {
+          const t = el('div', ctx.text(!!d.translation));
+          segmentsToNode(t, b.segments);
+          parent.appendChild(t);
+        }
+        emitTrans(); // 译文紧跟第一段正文
+      } else if (b.type === 'photos') {
+        const urls = blockPhotos(d, b);
+        if (urls.length) parent.appendChild(photoGrid(urls, ctx));
+      } else if (b.type === 'video') {
+        appendVideo(parent, d);
+      } else if (b.type === 'quote') {
+        if (d.quote && !(opts && opts.noQuote)) parent.appendChild(quoteBox(d.quote));
       }
     }
-    if (d.quote && !(opts && opts.noQuote)) parent.appendChild(quoteBox(d.quote));
+    emitTrans(); // 无正文块时（纯图推文）也要出译文
   }
 
   function quoteBox(q) {
     const box = el('div', 'box-sizing:border-box;margin-top:14px;border:1px solid #e1e8ed;border-radius:14px;padding:12px 14px;');
     const head = el('div', 'display:flex;align-items:center;gap:8px;');
-    if (q.avatarData) {
-      const img = el('img', avatarCss(20));
-      img.src = q.avatarData;
-      head.appendChild(img);
-    }
+    head.appendChild(avatarNode(q, 20));
     head.appendChild(el('span', 'font-size:14px;font-weight:700;line-height:1.3;color:#0f1419;word-break:break-word;', q.name || ''));
     head.appendChild(el('span', 'font-size:12.5px;color:#536471;line-height:1.4;', q.handle || ''));
     box.appendChild(head);
@@ -144,9 +176,7 @@
 
   function replyRow(d) {
     const row = el('div', 'display:flex;gap:10px;padding:14px 0 12px;border-bottom:1px solid #f4f7f8;');
-    const img = el('img', avatarCss(32));
-    if (d.avatarData) img.src = d.avatarData;
-    row.appendChild(img);
+    row.appendChild(avatarNode(d, 32));
     const body = el('div', 'flex:1;min-width:0;');
     const line = el('div', 'font-size:14px;color:#0f1419;line-height:1.4;');
     line.appendChild(el('b', 'font-weight:700;', d.name || ''));
@@ -173,9 +203,7 @@
     );
 
     const head = el('div', 'display:flex;align-items:center;gap:12px;');
-    const ava = el('img', avatarCss(46));
-    if (main.avatarData) ava.src = main.avatarData;
-    head.appendChild(ava);
+    head.appendChild(avatarNode(main, 46));
     const who = el('div', 'min-width:0;');
     who.appendChild(el('div', 'font-size:16px;font-weight:700;line-height:1.3;word-break:break-word;color:#0f1419;', main.name || ''));
     who.appendChild(el('div', 'font-size:13.5px;color:#536471;line-height:1.4;', main.handle || ''));
