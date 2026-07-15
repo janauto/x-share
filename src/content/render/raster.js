@@ -21,8 +21,12 @@
     // （toBlob 抛 "Tainted canvases may not be exported"）。卡片图片均为内联 data URL，不污染。
     if (typeof window.html2canvas !== 'function') throw new Error('html2canvas 未加载');
 
+    // 背景取卡片自身主题背景（跟随主题后卡片可能是暗蓝/纯黑）——
+    // 否则 html2canvas 用固定白底填充，深色卡片会露白边/白角。
+    const bg = (card.style && card.style.backgroundColor) || '#ffffff';
+
     const holder = document.createElement('div');
-    holder.style.cssText = 'position:fixed;left:-99999px;top:0;z-index:-1;background:#ffffff;';
+    holder.style.cssText = `position:fixed;left:-99999px;top:0;z-index:-1;background:${bg};`;
     holder.appendChild(card);
     document.body.appendChild(holder);
 
@@ -36,7 +40,7 @@
       if (h * scale > MAX_DIM) scale = Math.max(1, MAX_DIM / h);
 
       const canvas = await window.html2canvas(card, {
-        backgroundColor: '#ffffff',
+        backgroundColor: bg,
         scale,
         width: CARD_WIDTH,
         useCORS: true,

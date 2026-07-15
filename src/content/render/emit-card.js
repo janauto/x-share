@@ -243,10 +243,12 @@
     const { main, replies } = payload;
     // 深色主题默认加 1px 描边，防在微信白底聊天里边界消融（design §04「深色描边」）
     const outline = theme.key === 'light' ? '' : `border:1px solid ${theme.border};`;
+    // 外层方角（真实截图外沿是方的；圆角只留给内部媒体/引用）。深色主题的 outline
+    // 是防微信白底消融的 1px 描边，落在成图最外沿。
     const root = el(
       'div',
       `width:${CARD_WIDTH}px;box-sizing:border-box;background:${theme.bg};color:${theme.text};` +
-        `padding:16px;border-radius:16px;${outline}font-family:${FONT_NATIVE};`
+        `padding:16px;${outline}font-family:${FONT_NATIVE};`
     );
 
     // 头部：头像 + (名字+蓝勾 / 账号) + X logo
@@ -363,7 +365,7 @@
     const root = el(
       'div',
       `width:${CARD_WIDTH}px;box-sizing:border-box;background:${theme.bg};color:${theme.text};` +
-        `padding:26px 26px 18px;border-radius:16px;${outline}font-family:${FONT_READING};`
+        `padding:26px 26px 18px;${outline}font-family:${FONT_READING};`
     );
 
     const head = el('div', 'display:flex;align-items:center;gap:12px;');
