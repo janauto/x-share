@@ -4,7 +4,7 @@
 
 功能一览：
 
-- **双语长图**：主推文 + 引用 + 勾选评论，原文/译文对照，复制即可粘贴到微信。
+- **双语长图（新版「无痕 Seamless」）**：主推文 + 引用 + 勾选评论，原文/译文对照，复制即可粘贴到微信。长图**跟随 X 当前主题**（浅色/暗蓝/纯黑，也可固定），默认走 **X 原生截图风**皮肤——蓝勾徽章、X logo、原生翻译标签「已翻译自 英语」+ 纯文本译文、原生中文时间「下午3:42 · 2026年7月15日」、互动行，力求「就是一张 X 详情页截图」；另可在操作栏切回**阅读排版风**（蓝边译文块、大字号，适合长文/公众号）。
 - **默认自动选热门评论**：进入选择模式即按点赞/转推/回复的热度自动选出前 N 条（默认 10，可在设置/操作栏改，改动会记住），之后仍可手动增减；可在设置里关掉改为纯手动。
 - **生成网页 / 复制图文**：导出自包含单文件 HTML（图片内联、原文/译文切换、移动端友好）；或一键「复制图文」，直接粘贴进公众号 / 语雀 / 飞书 / 腾讯文档 / 印象笔记，由平台生成链接——免服务器、免备案、微信最友好。
 - **发布到腾讯文档（引导式半自动）**：网页预览里一键把图文复制到剪贴板并打开 `docs.qq.com`，右下角向导带你新建文档、粘贴一次、设为「任何人可查看」并取回链接——免服务器免备案、微信内打开最友好（需登录腾讯文档）。
@@ -13,6 +13,21 @@
 - **X Articles 基础支持**：识别长文专用的标题/正文容器并提取，避免只生成配图、不带正文；仍不追求正文与图片的精确穿插（见「已知限制」）。
 
 没有服务器、没有账号体系，抓取与渲染都发生在你自己的浏览器里；唯一的外部依赖是 DeepSeek API（可选，用于翻译和「模型打码」）。
+
+## 新版外观「无痕 Seamless」（v0.3.0）
+
+设计目标见 `design/总设计构思稿.md` 与 `design/设计呈现_opus48.html`：产出图**向外像一张 X 原生截图**、插件 UI **向内像 X 官方功能**。本版兑现了其视觉核心（建立在重构后的 IR + 皮肤化发射器架构上）：
+
+- **主题跟随**：生成时读 `getComputedStyle(document.body)` 判定当前 X 主题（浅色/暗蓝 `#15202B`/纯黑），长图与网页随之着色；也可在操作栏「主题」里固定为某一套。深色卡片默认加 1px 描边，防在微信白底聊天里边界消融。
+- **两套卡片皮肤**（操作栏「风格」切换）：`native` X 原生截图风（默认）——蓝勾徽章、X logo、原生翻译标签 + 纯文本译文、原生中文时间、互动行，无水印无工具痕迹；`reading` 阅读排版风——蓝边译文块、更大字号，适合长文/公众号插图。
+- **原生保真**：`fmtTimeNative`→「下午3:42 · 2026年7月15日」、`formatCountCN`→ 1.2万；`extract.js` 补提取认证徽章。
+
+> **需在真实 Chrome 里回归的新版项**（node 单测覆盖了主题 token、格式化、发射器结构，但下列依赖真实浏览器/DOM）：
+> 1. **长图渲染**：html2canvas 对内联 **SVG 图标**（蓝勾/X logo/互动图标）的栅格化是否正常——这是本版最需要肉眼确认的一处；若某图标不出，先看 `chrome://extensions` 的 content 脚本报错。
+> 2. **主题跟随**：分别在 X 浅色/暗蓝/纯黑三主题下点「生成长图」（主题选「跟随X」），确认卡片配色与当前 X 一致。
+> 3. **蓝勾徽章**：认证账号的推文，确认 `extract.js` 的 `icon-verified` 选择器仍命中（X 改版易变）；金/灰徽章 `verifiedKind` 判定为 best-effort。
+> 4. **两皮肤切换**：native / reading 各生成一次，确认译文样式与整体版式符合预期。
+> 5. **网页主题**：三主题各「生成网页 → 新标签预览」，确认 CSS 变量着色正确。
 
 ## 快速构建 / 上手
 
@@ -114,7 +129,8 @@ scripts/package.sh          打包成可分发 zip
 vendor/html2canvas.min.js   第三方：DOM 逐元素栅格化（MIT）
 src/shared/                 两栖纯逻辑模块（globalThis.__XS + module.exports，三端共享、node 可测）
   config-schema.js          DEFAULTS 唯一来源 + 配置归一化（normalizeConfig）
-  fmt.js                    esc / fmtDate / parseCount / needsTranslation / 字母头像 / buildTitle
+  fmt.js                    esc / fmtDate / fmtTimeNative / formatCountCN / parseCount / needsTranslation / 字母头像 / buildTitle
+  theme.js                  主题 token 系统：三主题(light/dim/lightsout) + 读页面背景判定当前 X 主题
   blocks.js                 有序块模型：blocksOf / blockPhotos / segments 聚合
   ir.js                     payload → RenderIR（唯一一次语义遍历：blocks 兜底、译文位置、引用递归）
   rpc.js                    content 侧消息信封 + 具名方法（getConfig / fetchImages / translate / redact / publish）
@@ -122,7 +138,8 @@ src/background.js           后台：importScripts(shared) + 表驱动 handler�
 src/content/extract.js      DOM 提取 + 热度解析（data-testid 锚点，改版时先查这里）
 src/content/redact.js       敏感内容打码：规则正则、PII、图片像素化
 src/content/render/         四个哑发射器 + 栅格化（只对 IR 节点 switch，只管样式不管语义）
-  emit-card.js              IR → 内联样式 DOM（html2canvas 输入；x.com CSP 约束，全走 CSSOM）
+  emit-card.js              IR → 内联样式 DOM（html2canvas 输入；x.com CSP 约束，全走 CSSOM）。
+                            双皮肤：native「X 原生截图风」(默认) / reading「阅读排版风」，均由 theme token 驱动
   emit-page.js              IR → 自包含网页 HTML
   emit-rich.js              IR → 「复制图文」富文本片段
   emit-text.js              IR → 纯文本兜底
@@ -143,7 +160,7 @@ server/cloudbase-publish/   境内可访问链接的发布端（CloudBase 云函
 
 ```
 vendor/html2canvas.min.js
-→ src/shared/（config-schema → fmt → blocks → ir → rpc，纯逻辑、无相互依赖除 ir 依赖 blocks）
+→ src/shared/（config-schema → fmt → theme → blocks → ir → rpc，纯逻辑；ir 依赖 blocks、emit-card 依赖 theme）
 → extract.js / redact.js（数据层，依赖 shared/fmt、shared/blocks）
 → render/emit-*.js + raster.js（渲染层，依赖 shared/ir、shared/fmt）
 → ui/widgets.js + pipeline.js（依赖 shared/rpc、shared/fmt、redact.js）
@@ -174,4 +191,5 @@ node --test test/
 - [x] 腾讯文档（引导式半自动）发布：免服务器免备案、微信内打开最友好；复用已登录会话，用户手动粘贴一次，其余（新建/设权限/取链接）自动优先、失败退成可视化引导
 - [ ]（可选，二期）腾讯文档 OpenAPI 发布目标：可做到全自动，但需自建后端换 token + 应用审核；已被上面的会话半自动替代，仅在需要零手动时再评估
 - [x] X Articles 基础长文提取（标题 + 正文；图片暂不与正文精确穿插，见「已知限制」）
-- [ ] 卡片样式可选（X 原生风 / 阅读排版风）
+- [x] 卡片样式可选（X 原生风 / 阅读排版风）+ 长图/网页跟随 X 三主题（「无痕 Seamless」v0.3.0）
+- [ ]（无痕二期）页面内 UI 全面原生化：入口藏进 X 分享菜单、FAB 换 compose 圆钮、预览长成 X Dialog、操作栏跟随主题；离屏(offscreen)渲染替代页内 html2canvas；仿真 iPhone 截图模式

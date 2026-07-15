@@ -25,6 +25,33 @@ test('fmtDate：空/非法返回空串', () => {
   assert.strictEqual(fmt.fmtDate('not-a-date'), '');
 });
 
+test('fmtTimeNative：X 原生中文时间「下午3:42 · 2026年7月15日」', () => {
+  assert.strictEqual(fmt.fmtTimeNative('2026-07-15T15:42:00'), '下午3:42 · 2026年7月15日');
+  assert.strictEqual(fmt.fmtTimeNative('2026-07-15T09:05:00'), '上午9:05 · 2026年7月15日');
+  // 边界：0 点 → 上午12；12 点 → 下午12
+  assert.strictEqual(fmt.fmtTimeNative('2026-07-15T00:00:00'), '上午12:00 · 2026年7月15日');
+  assert.strictEqual(fmt.fmtTimeNative('2026-07-15T12:00:00'), '下午12:00 · 2026年7月15日');
+  // 年月日不补零
+  assert.strictEqual(fmt.fmtTimeNative('2026-03-05T08:07:00'), '上午8:07 · 2026年3月5日');
+});
+
+test('fmtTimeNative：空/非法返回空串', () => {
+  assert.strictEqual(fmt.fmtTimeNative(''), '');
+  assert.strictEqual(fmt.fmtTimeNative(null), '');
+  assert.strictEqual(fmt.fmtTimeNative('not-a-date'), '');
+});
+
+test('formatCountCN：<1万 千分位，≥1万 用万，≥1亿 用亿', () => {
+  assert.strictEqual(fmt.formatCountCN(128), '128');
+  assert.strictEqual(fmt.formatCountCN(2912), '2,912');
+  assert.strictEqual(fmt.formatCountCN(12300), '1.2万');
+  assert.strictEqual(fmt.formatCountCN(10000), '1万'); // 整数不带 .0
+  assert.strictEqual(fmt.formatCountCN(99999), '10万'); // 9.9999 → 四舍五入 10
+  assert.strictEqual(fmt.formatCountCN(123000000), '1.2亿');
+  assert.strictEqual(fmt.formatCountCN(0), '0');
+  assert.strictEqual(fmt.formatCountCN(-5), '0'); // 负数兜底
+});
+
 test('parseCount：K/M 后缀', () => {
   assert.strictEqual(fmt.parseCount('1.2K'), 1200);
   assert.strictEqual(fmt.parseCount('3.4M'), 3400000);

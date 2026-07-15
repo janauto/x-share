@@ -4,25 +4,29 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 
-// ---- 极简 DOM stub（仅覆盖 emit-card 用到的 API），须在 require emit-card 前就位 ----
+// ---- 极简 DOM stub（覆盖 emit-card 用到的 API，含 SVG createElementNS / setAttribute）----
 function makeEl(tag) {
   return {
-    nodeType: 1, tag, _text: null, _src: null, children: [],
+    nodeType: 1, tag, _text: null, _src: null, _attrs: {}, children: [],
     style: { set cssText(v) { this._v = v; }, get cssText() { return this._v || ''; } },
     set textContent(v) { this._text = v; },
     get textContent() { return this._text; },
     set src(v) { this._src = v; },
     get src() { return this._src; },
+    setAttribute(k, v) { this._attrs[k] = String(v); },
+    getAttribute(k) { return this._attrs[k]; },
     appendChild(c) { this.children.push(c); return c; },
   };
 }
 global.window = global;
 global.document = {
   createElement: (tag) => makeEl(tag),
+  createElementNS: (_ns, tag) => makeEl(tag), // SVG 图标
   createTextNode: (text) => ({ nodeType: 3, _text: text }),
 };
 
 require('../src/shared/fmt.js');
+require('../src/shared/theme.js');
 require('../src/shared/blocks.js');
 require('../src/shared/ir.js');
 require('../src/content/render/emit-card.js');
@@ -30,6 +34,8 @@ require('../src/content/render/emit-page.js');
 require('../src/content/render/emit-rich.js');
 require('../src/content/render/emit-text.js');
 const XS = global.__XS;
+const LIGHT = XS.theme.THEMES.light;
+const DIM = XS.theme.THEMES.dim;
 
 const seg = (text, type) => ({ type: type || 'text', text });
 
@@ -152,46 +158,69 @@ test('emit-text：评论段落与「— 精选评论 —」分隔', () => {
   assert.ok(text.includes('图片评论译文')); // 评论译文（纯图评论也带译文）
 });
 
-// ---------- emit-card（DOM stub 结构断言）----------
+// ---------- emit-card（DOM stub 结构断言，双皮肤 + 主题跟随）----------
 function flatten(node, out) {
   if (!node) return out;
   if (node.nodeType === 3) { out.push({ text: node._text }); return out; }
-  out.push({ css: node.style.cssText, text: node._text, src: node._src });
-  node.children.forEach((c) => flatten(c, out));
+  out.push({ css: node.style ? node.style.cssText : '', text: node._text, src: node._src, attrs: node._attrs || {} });
+  (node.children || []).forEach((c) => flatten(c, out));
   return out;
 }
+const cardPay = (extra) => Object.assign({ main, replies: [pureImgReply] }, extra);
 
-test('emit-card：生成根节点且译文块位置正确（正文<译文<图片）', () => {
-  const root = XS.buildCard(payload);
+test('emit-card native（默认皮肤）：原生翻译标签 + 原生时间行 + 蓝勾/ X logo，无蓝边译文块', () => {
+  const root = XS.buildCard(cardPay({ main: { ...main, verified: true, verifiedKind: 'blue' }, theme: LIGHT, cardStyle: 'native' }));
   assert.strictEqual(root.tag, 'div');
   const flat = flatten(root, []);
+  const texts = flat.map((n) => n.text).filter((t) => t != null);
   const css = flat.map((n) => n.css || '');
-  // 主上下文正文 font-size:16.5px；主译文 font-size:17px + border-left；图片网格 display:grid
-  const iText = css.findIndex((c) => c.includes('font-size:16.5px'));
-  const iTrans = css.findIndex((c) => c.includes('font-size:17px') && c.includes('border-left:3px solid #1d9bf0'));
-  const iGrid = css.findIndex((c) => c.includes('display:grid'));
-  assert.ok(iText >= 0 && iTrans > iText && iGrid > iTrans, `card 顺序 ${iText}/${iTrans}/${iGrid}`);
+  const attrs = flat.map((n) => n.attrs || {});
+  assert.ok(texts.includes('已翻译自 英语'), '原生翻译标签缺失');
+  assert.ok(texts.includes('这是译文'), '纯文本译文缺失');
+  assert.ok(texts.includes('上午8:07 · 2026年3月5日'), '原生时间行缺失');
+  assert.ok(attrs.some((a) => a.d && a.d.startsWith('M22.25 12c0-1.43')), '蓝勾徽章 SVG 缺失');
+  assert.ok(attrs.some((a) => a.d && a.d.startsWith('M18.244 2.25')), 'X logo SVG 缺失');
+  assert.ok(!css.some((c) => c.includes('border-left:3px solid')), 'native 不应出现蓝边译文块');
 });
 
-test('emit-card：图片按顺序内联（PHOTO0 先于 PHOTO1）', () => {
-  const flat = flatten(XS.buildCard(payload), []);
+test('emit-card native：译文块紧跟首个正文、在图片之前；图片按序', () => {
+  const flat = flatten(XS.buildCard(cardPay({ theme: LIGHT, cardStyle: 'native' })), []);
+  const texts = flat.map((n) => n.text);
+  const iText = texts.indexOf('First ');
+  const iTransLbl = texts.indexOf('已翻译自 英语');
   const srcs = flat.map((n) => n.src).filter(Boolean);
-  assert.ok(srcs.indexOf('data:PHOTO0') >= 0);
-  assert.ok(srcs.indexOf('data:PHOTO0') < srcs.indexOf('data:PHOTO1'));
+  assert.ok(iText >= 0 && iTransLbl > iText, '译文应紧跟首个正文');
+  assert.ok(srcs.indexOf('data:PHOTO0') >= 0 && srcs.indexOf('data:PHOTO0') < srcs.indexOf('data:PHOTO1'));
 });
 
-test('emit-card：引用框内含引用作者名与引用图片', () => {
-  const flat = flatten(XS.buildCard(payload), []);
+test('emit-card reading（第二皮肤）：蓝边译文块 + 16.5px 主正文，无原生翻译标签', () => {
+  const flat = flatten(XS.buildCard(cardPay({ theme: LIGHT, cardStyle: 'reading' })), []);
+  const css = flat.map((n) => n.css || '');
   const texts = flat.map((n) => n.text).filter((t) => t != null);
-  assert.ok(texts.includes('Q<&>')); // 卡片用 textContent，不转义（栅格化）
-  const srcs = flat.map((n) => n.src).filter(Boolean);
-  assert.ok(srcs.includes('data:QPHOTO'));
-});
-
-test('emit-card：评论区标题与热度评论头像字母回退', () => {
-  const flat = flatten(XS.buildCard(payload), []);
-  const texts = flat.map((n) => n.text).filter((t) => t != null);
+  assert.ok(css.some((c) => c.includes('font-size:16.5px')), '阅读风主正文 16.5px 缺失');
+  assert.ok(css.some((c) => c.includes('border-left:3px solid #1D9BF0')), '蓝边译文块缺失（accent token）');
+  assert.ok(!texts.includes('已翻译自 英语'), 'reading 不应有原生翻译标签');
   assert.ok(texts.some((t) => t === '精选评论 · 1 条'));
-  // 纯图评论无 avatarData → 字母头像 'I'（Img 首字母）
-  assert.ok(texts.includes('I'));
+});
+
+test('emit-card：主题跟随——dim 主题用 dim token 着色 + 深色描边', () => {
+  const root = XS.buildCard(cardPay({ replies: [], theme: DIM, cardStyle: 'native' }));
+  const rootCss = root.style.cssText;
+  assert.ok(rootCss.includes('background:#15202B'), 'dim 背景缺失');
+  assert.ok(rootCss.includes('color:#F7F9F9'), 'dim 文字缺失');
+  assert.ok(rootCss.includes('border:1px solid #38444D'), '深色描边缺失');
+});
+
+test('emit-card：light 主题不加描边', () => {
+  const root = XS.buildCard(cardPay({ replies: [], theme: LIGHT, cardStyle: 'native' }));
+  assert.ok(!root.style.cssText.includes('border:1px solid'), 'light 不应加整卡描边');
+});
+
+test('emit-card：引用框含引用作者名与引用图片；纯图评论头像字母回退', () => {
+  const flat = flatten(XS.buildCard(cardPay({ theme: LIGHT, cardStyle: 'native' })), []);
+  const texts = flat.map((n) => n.text).filter((t) => t != null);
+  const srcs = flat.map((n) => n.src).filter(Boolean);
+  assert.ok(texts.includes('Q<&>')); // 卡片用 textContent，不转义（栅格化）
+  assert.ok(srcs.includes('data:QPHOTO'));
+  assert.ok(texts.includes('I')); // 纯图评论 Img 首字母
 });
