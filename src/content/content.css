@@ -23,9 +23,11 @@
 }
 
 /* ---------- FAB：X compose 同款 56px 圆钮 ---------- */
+/* 放左下角（不放右下）：X 桌面版右下角被私信抽屉占据、窄窗口还有 compose 圆钮，
+   与右下 FAB 会重合遮挡；左下角在全尺寸下都是空白区，最不打架。 */
 .xs-fab {
   position: fixed;
-  right: 20px;
+  left: 20px;
   bottom: 96px;
   z-index: 99999;
   display: none;
