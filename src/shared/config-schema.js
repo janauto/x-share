@@ -23,9 +23,13 @@
     // 评论：进入选择模式时自动按热度选取前 N 条
     autoHotDefault: true,
     autoHotN: 10,
-    // 卡片外观（「无痕 Seamless」新版）
+    // 卡片外观（「无痕 Seamless」新版；成图控制台改动即记忆）
     cardTheme: 'follow', // 'follow' | 'light' | 'dim' | 'lightsout'（follow=跟随 X 当前主题）
     cardStyle: 'native', // 'native'（X 原生截图风）| 'reading'（阅读排版风）
+    cardRatio: 'smart', // 'smart' | '4:5' | '1:1' | '3:4' | '9:16'
+    cardShowEng: true, // 显示·互动数据
+    cardShowTime: true, // 显示·时间
+    cardShowFooter: false, // 显示·落款（原文链接行）——默认关，真截图不带来源行
     // 敏感内容屏蔽
     redactEnabled: false,
     redactMode: 'rules', // 'rules' | 'model'
@@ -58,6 +62,10 @@
       autoHotN: c.autoHotN || 10,
       cardTheme: c.cardTheme || 'follow',
       cardStyle: c.cardStyle === 'reading' ? 'reading' : 'native',
+      cardRatio: c.cardRatio || 'smart',
+      cardShowEng: c.cardShowEng !== false,
+      cardShowTime: c.cardShowTime !== false,
+      cardShowFooter: !!c.cardShowFooter,
       redactEnabled: !!c.redactEnabled,
       redactMode: c.redactMode || 'rules',
       redactTerms: c.redactTerms || '',

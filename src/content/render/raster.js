@@ -16,7 +16,28 @@
     return Promise.all(jobs);
   }
 
-  XS.renderCardToPng = async function (card) {
+  // 固定比例补白（设计 §06 规则 3「补白不缩放」）：内容不足目标比例时按视觉重心
+  // （略偏上）上下补背景色；内容超出时不裁（分页属二期），原样返回并附原因。
+  // 计划纯逻辑在 shared/ratio.js（可单测），这里只做 canvas 搬运。
+  function padCanvasToRatio(canvas, ratioKey, bg) {
+    const plan = XS.ratio.padPlan(canvas.width, canvas.height, ratioKey);
+    if (plan.mode === 'natural') return { canvas, note: null };
+    if (plan.mode === 'overflow') {
+      return { canvas, note: `内容超出 ${ratioKey} 比例，已按智能长图导出（分页裁切在路线图中）` };
+    }
+    const out = document.createElement('canvas');
+    out.width = canvas.width;
+    out.height = plan.targetH;
+    const ctx = out.getContext('2d');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.drawImage(canvas, 0, plan.top);
+    return { canvas: out, note: null };
+  }
+
+  // opts.ratio：'smart'（默认）| '4:5' | '1:1' | '3:4' | '9:16'
+  // 返回 { blob, note }：note 是比例回退等提示（无则 null）。
+  XS.renderCardToPng = async function (card, opts) {
     // html2canvas 逐元素栅格化，避免 SVG foreignObject 方案在 Chromium 下污染画布
     // （toBlob 抛 "Tainted canvases may not be exported"）。卡片图片均为内联 data URL，不污染。
     if (typeof window.html2canvas !== 'function') throw new Error('html2canvas 未加载');
@@ -48,9 +69,13 @@
         imageTimeout: 0,
       });
 
-      return await new Promise((resolve, reject) => {
-        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('PNG 导出失败'))), 'image/png');
+      const ratioKey = (opts && opts.ratio) || 'smart';
+      const padded = padCanvasToRatio(canvas, ratioKey, bg);
+
+      const blob = await new Promise((resolve, reject) => {
+        padded.canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('PNG 导出失败'))), 'image/png');
       });
+      return { blob, note: padded.note || null };
     } finally {
       holder.remove();
     }

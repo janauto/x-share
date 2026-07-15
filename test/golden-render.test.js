@@ -216,6 +216,34 @@ test('emit-card：light 主题不加描边', () => {
   assert.ok(!root.style.cssText.includes('border:1px solid'), 'light 不应加整卡描边');
 });
 
+test('emit-card 显示开关：落款默认关（无原文行）；开启后出现', () => {
+  const off = flatten(XS.buildCard(cardPay({ theme: LIGHT, cardStyle: 'native' })), []);
+  const offTexts = off.map((n) => n.text).filter((t) => t != null);
+  assert.ok(!offTexts.some((t) => String(t).includes('x.com/alice/status/1')), '落款默认应关（真截图不带来源行）');
+
+  const on = flatten(XS.buildCard(cardPay({ theme: LIGHT, cardStyle: 'native', show: { footer: true } })), []);
+  const onTexts = on.map((n) => n.text).filter((t) => t != null);
+  assert.ok(onTexts.some((t) => String(t).includes('x.com/alice/status/1')), '落款开启后应有原文行');
+});
+
+test('emit-card 显示开关：时间/互动数据可关', () => {
+  const flat = flatten(XS.buildCard(cardPay({
+    theme: LIGHT, cardStyle: 'native', show: { time: false, eng: false },
+  })), []);
+  const texts = flat.map((n) => n.text).filter((t) => t != null);
+  assert.ok(!texts.includes('上午8:07 · 2026年3月5日'), '时间关闭后不应有时间行');
+  // 互动关闭：主推文的书签图标（互动行独有）不应出现
+  const attrs = flat.map((n) => n.attrs || {});
+  assert.ok(!attrs.some((a) => a.d && a.d.startsWith('M4 4.5C4 3.12')), '互动关闭后不应有互动行图标');
+});
+
+test('emit-card reading：落款去水印——开启落款也不再输出「X 转发卡片」字样', () => {
+  const flat = flatten(XS.buildCard(cardPay({ theme: LIGHT, cardStyle: 'reading', show: { footer: true } })), []);
+  const texts = flat.map((n) => n.text).filter((t) => t != null);
+  assert.ok(texts.some((t) => String(t).includes('原文：')), 'reading 落款应有原文行');
+  assert.ok(!texts.some((t) => String(t).includes('X 转发卡片')), '水印字样应已移除');
+});
+
 test('emit-card：引用框含引用作者名与引用图片；纯图评论头像字母回退', () => {
   const flat = flatten(XS.buildCard(cardPay({ theme: LIGHT, cardStyle: 'native' })), []);
   const texts = flat.map((n) => n.text).filter((t) => t != null);

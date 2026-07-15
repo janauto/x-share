@@ -217,7 +217,7 @@
     return row;
   }
 
-  function nativeReply(d, theme) {
+  function nativeReply(d, theme, show) {
     const row = el('div', `display:flex;gap:10px;padding:14px 0 12px;border-bottom:1px solid ${theme.border};`);
     row.appendChild(avatarNode(d, 32, theme));
     const body = el('div', 'flex:1;min-width:0;');
@@ -227,9 +227,9 @@
     line.appendChild(el('span', `color:${theme.text2};font-weight:400;font-size:13px;`, d.handle || ''));
     body.appendChild(line);
     walkIR(body, XS.buildIR(d), nativeCtx(theme, 'reply'));
-    // 评论的迷你互动行（回复/喜欢），有数字才出
+    // 评论的迷你互动行（回复/喜欢），有数字且「互动数据」开启才出
     const e = d.engagement;
-    if (e && (e.replies || e.likes)) {
+    if (show.eng && e && (e.replies || e.likes)) {
       const acts = el('div', 'margin-top:8px;display:flex;gap:24px;');
       acts.appendChild(actionItem(theme, PATHS.reply, e.replies || 0));
       acts.appendChild(actionItem(theme, PATHS.like, e.likes || 0));
@@ -239,7 +239,7 @@
     return row;
   }
 
-  function buildNative(payload, theme) {
+  function buildNative(payload, theme, show) {
     const { main, replies } = payload;
     // 深色主题默认加 1px 描边，防在微信白底聊天里边界消融（design §04「深色描边」）
     const outline = theme.key === 'light' ? '' : `border:1px solid ${theme.border};`;
@@ -269,24 +269,27 @@
     walkIR(bodyWrap, XS.buildIR(main), nativeCtx(theme, 'main'));
     root.appendChild(bodyWrap);
 
-    // 原生时间行
-    const t = XS.fmtTimeNative(main.datetime);
+    // 原生时间行（「显示·时间」控制）
+    const t = show.time ? XS.fmtTimeNative(main.datetime) : '';
     if (t) root.appendChild(el('div', `margin-top:12px;font-size:15px;color:${theme.text2};`, t));
 
-    // 互动行：上下 1px 分隔
-    root.appendChild(el('div', `margin-top:12px;border-top:1px solid ${theme.border};`));
-    root.appendChild(nativeActions(theme, main.engagement));
-    root.appendChild(el('div', `margin-top:12px;border-top:1px solid ${theme.border};`));
+    // 互动行：上下 1px 分隔（「显示·互动数据」控制）
+    if (show.eng) {
+      root.appendChild(el('div', `margin-top:12px;border-top:1px solid ${theme.border};`));
+      root.appendChild(nativeActions(theme, main.engagement));
+      root.appendChild(el('div', `margin-top:12px;border-top:1px solid ${theme.border};`));
+    }
 
     if (replies && replies.length) {
+      if (!show.eng) root.appendChild(el('div', `margin-top:12px;border-top:1px solid ${theme.border};`));
       const sec = el('div', 'margin-top:4px;');
-      replies.forEach((r) => sec.appendChild(nativeReply(r, theme)));
+      replies.forEach((r) => sec.appendChild(nativeReply(r, theme, show)));
       root.appendChild(sec);
     }
 
-    // 页脚：仅原文链接（无「转发卡片」等工具痕迹），等宽数字更像地址栏
+    // 落款（「显示·落款」控制，默认关——一张真截图不带来源行）：仅原文链接，等宽字更像地址栏
     const src = (main.permalink || '').replace(/^https?:\/\//, '');
-    if (src) {
+    if (show.footer && src) {
       root.appendChild(el(
         'div',
         `margin-top:14px;font-size:13px;color:${theme.text2};word-break:break-all;` +
@@ -359,7 +362,7 @@
     return row;
   }
 
-  function buildReading(payload, theme) {
+  function buildReading(payload, theme, show) {
     const { main, replies } = payload;
     const outline = theme.key === 'light' ? '' : `border:1px solid ${theme.border};`;
     const root = el(
@@ -389,18 +392,22 @@
       root.appendChild(sec);
     }
 
-    const foot = el('div', `margin-top:18px;padding-top:12px;border-top:1px solid ${theme.border};display:flex;justify-content:space-between;gap:16px;font-size:12px;color:${theme.text2};`);
-    const src = (main.permalink || '').replace(/^https?:\/\//, '');
-    foot.appendChild(el('div', 'word-break:break-all;min-width:0;', src ? `原文：${src}` : ''));
-    const dateStr = XS.fmtDate(main.datetime);
-    foot.appendChild(el('div', 'flex:none;white-space:nowrap;', `${dateStr ? dateStr + ' · ' : ''}X 转发卡片`));
-    root.appendChild(foot);
+    // 落款（「显示·落款」控制）：原文 + 时间。P0 去水印——不再输出「X 转发卡片」字样
+    if (show.footer) {
+      const foot = el('div', `margin-top:18px;padding-top:12px;border-top:1px solid ${theme.border};display:flex;justify-content:space-between;gap:16px;font-size:12px;color:${theme.text2};`);
+      const src = (main.permalink || '').replace(/^https?:\/\//, '');
+      foot.appendChild(el('div', 'word-break:break-all;min-width:0;', src ? `原文：${src}` : ''));
+      const dateStr = show.time ? XS.fmtDate(main.datetime) : '';
+      foot.appendChild(el('div', 'flex:none;white-space:nowrap;', dateStr));
+      root.appendChild(foot);
+    }
 
     return root;
   }
 
   // ---------- 出口：按 payload.cardStyle 选皮肤，payload.theme 决定主题 ----------
   // payload.theme 期望是 token 对象（pipeline 已 resolve）；缺失/字符串时兜底为 light。
+  // payload.show = { eng, time, footer }：互动数据/时间 默认开，落款默认关（真截图不带来源行）。
   XS.buildCard = function (payload) {
     let theme = payload && payload.theme;
     if (!theme || typeof theme === 'string') {
@@ -408,7 +415,13 @@
         ? XS.theme.resolveTheme(typeof theme === 'string' ? theme : 'light', null)
         : lightTheme();
     }
+    const rawShow = (payload && payload.show) || {};
+    const show = {
+      eng: rawShow.eng !== false,
+      time: rawShow.time !== false,
+      footer: !!rawShow.footer,
+    };
     const style = (payload && payload.cardStyle) === 'reading' ? buildReading : buildNative;
-    return style(payload, theme);
+    return style(payload, theme, show);
   };
 })();

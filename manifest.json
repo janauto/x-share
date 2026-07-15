@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "X 转发卡片",
-  "version": "0.3.0",
-  "description": "把推文（含中文翻译和你勾选的评论）生成双语长图或网页，方便转发到微信。新版长图跟随 X 主题、提供 X 原生截图风皮肤。",
+  "version": "0.4.0",
+  "description": "把推文（含中文翻译和你勾选的评论）生成双语长图或网页，方便转发到微信。长图跟随 X 主题、X 原生截图风皮肤、比例预设与零摩擦快捷通道。",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -21,7 +21,7 @@
   "background": {
     "service_worker": "src/background.js"
   },
-  "//content_scripts_order": "加载顺序是路线A的生命线，须按依赖序：shared(纯逻辑) → extract/redact(数据) → render(发射器) → ui/pipeline → content(编排)。顺序错误 = 白屏级故障。",
+  "//content_scripts_order": "加载顺序是路线A的生命线，须按依赖序：shared(纯逻辑) → extract/redact(数据) → render(发射器) → ui/pipeline → content(编排) → share-menu(依赖 content 的 XS.quickShare)。顺序错误 = 白屏级故障。",
   "content_scripts": [
     {
       "matches": ["https://x.com/*", "https://twitter.com/*"],
@@ -30,6 +30,7 @@
         "src/shared/config-schema.js",
         "src/shared/fmt.js",
         "src/shared/theme.js",
+        "src/shared/ratio.js",
         "src/shared/blocks.js",
         "src/shared/ir.js",
         "src/shared/rpc.js",
@@ -42,7 +43,8 @@
         "src/content/render/raster.js",
         "src/content/ui/widgets.js",
         "src/content/pipeline.js",
-        "src/content/content.js"
+        "src/content/content.js",
+        "src/content/share-menu.js"
       ],
       "css": ["src/content/content.css"],
       "run_at": "document_idle"

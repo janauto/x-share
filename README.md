@@ -14,20 +14,30 @@
 
 没有服务器、没有账号体系，抓取与渲染都发生在你自己的浏览器里；唯一的外部依赖是 DeepSeek API（可选，用于翻译和「模型打码」）。
 
-## 新版外观「无痕 Seamless」（v0.3.0）
+## 新版外观「无痕 Seamless」（v0.4.0）
 
-设计目标见 `design/总设计构思稿.md` 与 `design/设计呈现_opus48.html`：产出图**向外像一张 X 原生截图**、插件 UI **向内像 X 官方功能**。本版兑现了其视觉核心（建立在重构后的 IR + 皮肤化发射器架构上）：
+设计目标见 `design/总设计构思稿.md` 与 `design/设计呈现_opus48.html`：产出图**向外像一张 X 原生截图**、插件 UI **向内像 X 官方功能**。设计稿排期 P0–P3 已全部落地（分页裁切除外）：
 
-- **主题跟随**：生成时读 `getComputedStyle(document.body)` 判定当前 X 主题（浅色/暗蓝 `#15202B`/纯黑），长图与网页随之着色；也可在操作栏「主题」里固定为某一套。深色卡片默认加 1px 描边，防在微信白底聊天里边界消融。
-- **两套卡片皮肤**（操作栏「风格」切换）：`native` X 原生截图风（默认）——蓝勾徽章、X logo、原生翻译标签 + 纯文本译文、原生中文时间、互动行，无水印无工具痕迹；`reading` 阅读排版风——蓝边译文块、更大字号，适合长文/公众号插图。
-- **原生保真**：`fmtTimeNative`→「下午3:42 · 2026年7月15日」、`formatCountCN`→ 1.2万；`extract.js` 补提取认证徽章。
+**向外（成图）**
+- **主题跟随**：生成时读 `getComputedStyle(document.body)` 判定当前 X 主题（浅色/暗蓝 `#15202B`/纯黑），长图与网页随之着色，也可固定。深色卡片默认加 1px 描边，防在微信白底聊天里边界消融。
+- **两套卡片皮肤**：`native` X 原生截图风（默认）——蓝勾徽章、X logo、原生翻译标签 + 纯文本译文、原生中文时间「下午3:42 · 2026年7月15日」、互动行（1.2万 格式）；`reading` 阅读排版风——蓝边译文块、更大字号。**水印已全面移除**（「落款」原文行默认关，可在成图控制台打开）。
+- **比例预设**：智能长图（默认）/ 4:5 / 1:1 / 3:4 / 9:16——固定比例下内容不足按视觉重心（略偏上）补背景色、不缩放；内容超出则退回智能长图并提示（分页裁切在路线图）。
 
-> **需在真实 Chrome 里回归的新版项**（node 单测覆盖了主题 token、格式化、发射器结构，但下列依赖真实浏览器/DOM）：
-> 1. **长图渲染**：html2canvas 对内联 **SVG 图标**（蓝勾/X logo/互动图标）的栅格化是否正常——这是本版最需要肉眼确认的一处；若某图标不出，先看 `chrome://extensions` 的 content 脚本报错。
-> 2. **主题跟随**：分别在 X 浅色/暗蓝/纯黑三主题下点「生成长图」（主题选「跟随X」），确认卡片配色与当前 X 一致。
-> 3. **蓝勾徽章**：认证账号的推文，确认 `extract.js` 的 `icon-verified` 选择器仍命中（X 改版易变）；金/灰徽章 `verifiedKind` 判定为 best-effort。
-> 4. **两皮肤切换**：native / reading 各生成一次，确认译文样式与整体版式符合预期。
-> 5. **网页主题**：三主题各「生成网页 → 新标签预览」，确认 CSS 变量着色正确。
+**向内（页面 UI，恒跟随 X 主题）**
+- FAB 换成 X compose 同款 56px 圆钮；操作栏变成跟随主题的工具条（火焰 SVG + 步进器 + X 开关 + 胶囊按钮，「生成网页」降白底描边次级）；勾选改 22px 圆圈（左上角避开 ⋯）；弹窗长成 X Dialog（✕ 左上、主按钮右上、scale .95→1 入场）；Toast 蓝底白字自底部升起；全面清除 emoji 控件；动效尊重 `prefers-reduced-motion`。
+- **成图控制台**：长图预览弹窗内直接切换 比例/主题/样式/显示（互动数据·时间·落款），改动即重渲染，选择全部记忆。
+- **零摩擦通道**：`⌥ + 点击 FAB` 或 `Shift+S`（详情页）→ 跳过选择与预览，按上次配置直接生成主推文长图进剪贴板 + Toast「已复制」。
+- **分享菜单注入（best-effort）**：X 自己的分享下拉菜单里追加「以图片分享」一行（克隆现有菜单项换文案图标，样式原样继承）；X 改版失效时静默消失，FAB 与快捷键不受影响。
+- 下载文件名用 iPhone 风格 `IMG_XXXX.PNG`。
+
+> **需在真实 Chrome 里回归的项**（node 单测 98 例覆盖纯逻辑，下列依赖真实浏览器/DOM）：
+> 1. **长图渲染**：html2canvas 对内联 **SVG 图标**（蓝勾/X logo/互动图标）的栅格化——最需要肉眼确认的一处；异常先看 `chrome://extensions` 的 content 脚本报错。
+> 2. **页面 UI 主题跟随**：在 X 里切换 浅色/暗蓝/纯黑，确认 FAB/操作栏/弹窗/Toast 配色实时跟随。
+> 3. **成图控制台**：改比例/主题/样式/显示各一次，确认预览即时刷新且选择被记住；4:5 等固定比例下确认补白居中略偏上。
+> 4. **零摩擦通道**：⌥点击 FAB 与 Shift+S 各试一次（<2 秒进剪贴板）。
+> 5. **分享菜单注入**：点推文分享图标，看菜单里是否多出「以图片分享」；没有也不算故障（属 best-effort，X 菜单 DOM 易变）。
+> 6. **蓝勾徽章**：认证账号推文确认 `icon-verified` 选择器命中；金/灰徽章判定为 best-effort。
+> 7. **网页主题**：三主题各「生成网页 → 新标签预览」确认着色。
 
 ## 快速构建 / 上手
 
@@ -131,6 +141,7 @@ src/shared/                 两栖纯逻辑模块（globalThis.__XS + module.exp
   config-schema.js          DEFAULTS 唯一来源 + 配置归一化（normalizeConfig）
   fmt.js                    esc / fmtDate / fmtTimeNative / formatCountCN / parseCount / needsTranslation / 字母头像 / buildTitle
   theme.js                  主题 token 系统：三主题(light/dim/lightsout) + 读页面背景判定当前 X 主题
+  ratio.js                  比例引擎：智能/4:5/1:1/3:4/9:16 补白计划（视觉重心略偏上，不缩放）
   blocks.js                 有序块模型：blocksOf / blockPhotos / segments 聚合
   ir.js                     payload → RenderIR（唯一一次语义遍历：blocks 兜底、译文位置、引用递归）
   rpc.js                    content 侧消息信封 + 具名方法（getConfig / fetchImages / translate / redact / publish）
@@ -146,7 +157,8 @@ src/content/render/         四个哑发射器 + 栅格化（只对 IR 节点 sw
   raster.js                 卡片 DOM → html2canvas → PNG Blob
 src/content/ui/widgets.js   页面内 UI 组件：fab / 操作栏 / 弹窗 / 遮罩 / toast / 预览
 src/content/pipeline.js     生成管线：批量抓图内联 → 翻译 → 打码克隆（纯数据进出，经 rpc 走后台）
-src/content/content.js      仅编排：状态 + 事件接线（选择模式、自动选热门、触发管线与预览）
+src/content/content.js      仅编排：状态 + 事件接线（选择模式、自动选热门、成图控制台、零摩擦通道）
+src/content/share-menu.js   分享菜单注入「以图片分享」（best-effort，克隆 X 菜单项，失败静默）
 src/content/txdocs.js       腾讯文档引导式半自动发布（仅 docs.qq.com 注入，右下角向导浮层）
 src/content/content.css     页面内 UI 样式
 src/options/options.html    设置页（先引 shared/config-schema.js 再引 options.js）
@@ -192,4 +204,5 @@ node --test test/
 - [ ]（可选，二期）腾讯文档 OpenAPI 发布目标：可做到全自动，但需自建后端换 token + 应用审核；已被上面的会话半自动替代，仅在需要零手动时再评估
 - [x] X Articles 基础长文提取（标题 + 正文；图片暂不与正文精确穿插，见「已知限制」）
 - [x] 卡片样式可选（X 原生风 / 阅读排版风）+ 长图/网页跟随 X 三主题（「无痕 Seamless」v0.3.0）
-- [ ]（无痕二期）页面内 UI 全面原生化：入口藏进 X 分享菜单、FAB 换 compose 圆钮、预览长成 X Dialog、操作栏跟随主题；离屏(offscreen)渲染替代页内 html2canvas；仿真 iPhone 截图模式
+- [x]（无痕 P1–P3，v0.4.0）页面内 UI 全面原生化（compose 圆钮 / X 工具条 / 22px 勾选圈 / X Dialog / 蓝 Toast / 零 emoji / reduced-motion）；成图控制台（比例·主题·样式·显示，即改即渲染）；比例预设与补白引擎；零摩擦通道（⌥FAB / Shift+S）；分享菜单注入「以图片分享」（best-effort）；去水印；IMG_XXXX.PNG 文件名
+- [ ]（无痕后续）分页裁切（行盒吸附、切点落推文/段落边界）；仿真 iPhone 截图模式（393pt@3x）；离屏(offscreen)渲染替代页内 html2canvas；设置页 X 风格重排
