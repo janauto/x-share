@@ -6,6 +6,10 @@
 // 已用 copyRich 写入）传输，用户到编辑器按一次 ⌘V 即注入；其余各步「自动优先、
 // 失败退成可视化引导」，最坏情况是带向导的手动流。首跑即校准选择器。
 //
+// 为什么不做全自动后台导入：真正的零手动需要腾讯文档 OpenAPI + 自建后端换 access_token
+// （README 路线图里已列该条目）；而本脚本会话内合成的 paste 事件会被编辑器 isTrusted 过滤，
+// 无法可靠注入。这属于平台约束（canvas 编辑器 + 无匿名建档 API），不是本插件的缺陷。
+//
 // 触发方式：content.js 把 { html, plain, title, ts } 存进 chrome.storage.local
 // 键 xsTxdocsPending，然后 window.open('https://docs.qq.com/desktop')。本脚本
 // 作为常驻内容脚本在 docs.qq.com 的每个页面注入，启动时读 pending：无任务 / 过期

@@ -1,14 +1,22 @@
-// 发射器：RenderIR →「复制图文」的富文本片段（全内联 style）。
-// 用内联 style（不用 class + <style>），因为粘贴进富文本编辑器时外部样式表会被丢弃。
+// 发射器：RenderIR →「复制图文」的富文本片段（扁平块级、全内联 style）。
+//
+// 为什么是「扁平块级」而不是嵌套 div：腾讯文档是 canvas 自绘富文本编辑器，粘贴时会把
+// 嵌套 <div> 压平、剥掉 border-radius / border / background / display:flex / vertical-align，
+// 也会把圆头像 <img> 当作行内大方块图——旧版的头像图 + 译文条 + 引用卡因此在腾讯文档里碎版。
+// 于是只用编辑器最安全的块级标签：<p> <strong> <span style="color"> <blockquote> <img> <hr>，
+// 禁用头像图 / border-radius / border-left / display / vertical-align / flex / 嵌套 div。
+// 这套结构对公众号 / 语雀 / 飞书 / 印象笔记 粘贴同样更稳。
+//
 // 图片仍是内联 data URL：语雀/飞书/腾讯文档/印象笔记 粘贴时会自动重传托管；
 // 公众号编辑器可能丢弃 data URL 图片（其图片需上传到自家服务器），属已知取舍。
 //
-// 语义已由 shared/ir.js 解决，本发射器只对 node.kind 做哑 switch。
+// 语义已由 shared/ir.js 解决，本发射器只对 node.kind 做哑 switch（nodesToRichHtml）。
 
 (() => {
   const XS = (globalThis.__XS = globalThis.__XS || {});
   const esc = XS.esc;
 
+  // 实体（@handle / #tag / 链接）仍用蓝色 span 标出；段内换行 \n → <br>。
   function richSeg(segments) {
     if (!segments || !segments.length) return '';
     return segments
@@ -17,38 +25,35 @@
       .replace(/\n/g, '<br>');
   }
 
+  // 每张图独占一个 <p>，不加 border-radius（腾讯文档会剥）。
   function richImgs(urls) {
     if (!urls || !urls.length) return '';
     return urls
       .slice(0, 4)
-      .map((u) => `<img src="${esc(u)}" style="max-width:100%;border-radius:12px;margin-top:8px;display:block">`)
+      .map((u) => `<p><img src="${esc(u)}" style="max-width:100%"></p>`)
       .join('');
   }
 
-  function richAvatar(d, size) {
-    if (d.avatarData)
-      return `<img src="${esc(d.avatarData)}" width="${size}" height="${size}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;vertical-align:middle">`;
-    return `<span style="display:inline-block;width:${size}px;height:${size}px;border-radius:50%;background:${XS.avatarColor(d.handle || d.name)};color:#fff;text-align:center;line-height:${size}px;font-weight:700;vertical-align:middle">${esc(XS.avatarInitial(d.name, d.handle))}</span>`;
+  // 名字行：<strong>名字</strong> <span 灰>@handle</span>，无头像图。
+  function richNameLine(d) {
+    return `<p><strong>${esc(d.name || '')}</strong> <span style="color:#536471">${esc(d.handle || '')}</span></p>`;
   }
 
-  function richHead(d, avaSize, nameSize) {
-    return `<div style="margin-bottom:2px">${richAvatar(d, avaSize)} <b style="font-size:${nameSize}px;vertical-align:middle">${esc(d.name)}</b> <span style="color:#536471;font-size:13px;vertical-align:middle">${esc(d.handle)}</span></div>`;
-  }
-
-  // IR → 富文本 HTML 的哑 switch
+  // IR → 扁平富文本 HTML 的哑 switch。引用整体包 <blockquote>，内部同样扁平。
   function nodesToRichHtml(ir) {
     let h = '';
     for (const node of ir) {
       if (node.kind === 'text') {
-        h += `<div style="margin-top:8px;font-size:16px;line-height:1.7;white-space:pre-wrap;word-wrap:break-word">${richSeg(node.segments)}</div>`;
+        h += `<p style="font-size:15px;line-height:1.7">${richSeg(node.segments)}</p>`;
       } else if (node.kind === 'translation') {
-        h += `<div style="margin-top:8px;font-size:15px;line-height:1.7;background:#f5f8fa;border-left:3px solid #1d9bf0;border-radius:0 8px 8px 0;padding:8px 12px;white-space:pre-wrap;word-wrap:break-word">${esc(node.text).replace(/\n/g, '<br>')}</div>`;
+        // 译文用蓝色正文段，保留【译】前缀更稳（编辑器剥背景色时仍能一眼区分）。
+        h += `<p style="color:#1d9bf0">【译】${esc(node.text).replace(/\n/g, '<br>')}</p>`;
       } else if (node.kind === 'photos') {
         h += richImgs(node.urls);
       } else if (node.kind === 'video') {
-        if (node.poster) h += `<img src="${esc(node.poster)}" style="max-width:100%;border-radius:12px;margin-top:8px;display:block">`;
+        if (node.poster) h += `<p><img src="${esc(node.poster)}" style="max-width:100%"></p>`;
       } else if (node.kind === 'quote') {
-        h += `<div style="margin-top:10px;border:1px solid #e1e8ed;border-radius:12px;padding:10px 12px">${richHead(node.tweet, 20, 14)}${nodesToRichHtml(node.ir)}</div>`;
+        h += `<blockquote>${richNameLine(node.tweet)}${nodesToRichHtml(node.ir)}</blockquote>`;
       }
     }
     return h;
@@ -56,19 +61,23 @@
 
   XS.buildRichHtml = function (payload) {
     const { main, replies } = payload;
-    let h = '<div style="font-family:-apple-system,BlinkMacSystemFont,\'PingFang SC\',\'Microsoft YaHei\',sans-serif;color:#0f1419;max-width:600px">';
-    h += richHead(main, 40, 16);
+    let h = '';
+    h += richNameLine(main);
     h += nodesToRichHtml(XS.buildIR(main));
     if (replies && replies.length) {
-      h += `<div style="margin-top:14px;padding-top:8px;border-top:1px solid #eff3f4;color:#8b98a5;font-size:13px">精选评论 · ${replies.length} 条</div>`;
-      replies.forEach((r) => {
-        h += `<div style="padding:10px 0;border-bottom:1px solid #f4f7f8">${richHead(r, 24, 14)}${nodesToRichHtml(XS.buildIR(r))}</div>`;
+      // 评论区：<hr> 分隔 + 小标题；每条评论 = 名字行 + 正文 + 图，评论间再用 <hr> 分隔。
+      h += '<hr>';
+      h += `<p style="color:#536471">精选评论 · ${replies.length} 条</p>`;
+      replies.forEach((r, i) => {
+        if (i > 0) h += '<hr>';
+        h += richNameLine(r);
+        h += nodesToRichHtml(XS.buildIR(r));
       });
     }
+    // 末尾：时间 · 原文链接（纯文本，不用 <a>——编辑器会自动识别 URL 成链接）。
     const t = XS.fmtDate(main.datetime);
-    const link = main.permalink ? `原文：<a href="${esc(main.permalink)}" style="color:#8b98a5">${esc(main.permalink)}</a>` : '';
-    h += `<div style="margin-top:12px;color:#8b98a5;font-size:12px">${t ? t + ' · ' : ''}${link}</div>`;
-    h += '</div>';
+    const link = main.permalink ? `原文：${esc(main.permalink)}` : '';
+    h += `<p style="color:#8b98a5;font-size:12px">${t ? t + ' · ' : ''}${link}</p>`;
     return h;
   };
 })();

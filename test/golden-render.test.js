@@ -133,6 +133,15 @@ test('emit-rich：引用作为内嵌块、含引用正文与图片', () => {
   const html = XS.buildRichHtml(payload);
   assert.ok(html.includes('quoted body'));
   assert.ok(html.includes('data:QPHOTO'));
+  assert.ok(html.includes('<blockquote'), '引用应包成 blockquote');
+});
+
+test('emit-rich：扁平块级结构——不含 border-radius / <div（腾讯文档粘贴安全）', () => {
+  const html = XS.buildRichHtml(payload);
+  assert.ok(!html.includes('border-radius'), 'rich 输出不应含 border-radius（会被腾讯文档剥掉致碎版）');
+  assert.ok(!html.includes('<div'), 'rich 输出不应含 <div（嵌套 div 会被压平）');
+  assert.ok(!html.includes('border-left'), 'rich 输出不应含 border-left 译文条');
+  assert.ok(html.includes('【译】'), '译文应保留【译】前缀');
 });
 
 // ---------- emit-text ----------
@@ -242,6 +251,22 @@ test('emit-card reading：落款去水印——开启落款也不再输出「X �
   const texts = flat.map((n) => n.text).filter((t) => t != null);
   assert.ok(texts.some((t) => String(t).includes('原文：')), 'reading 落款应有原文行');
   assert.ok(!texts.some((t) => String(t).includes('X 转发卡片')), '水印字样应已移除');
+});
+
+test('emit-card：mediaCap 缩放网格图片高度（裁图不裁文）——0.5 时约为默认一半', () => {
+  // 默认 cap=1：双图网格图片高 220px
+  const flatFull = flatten(XS.buildCard(cardPay({ theme: LIGHT, cardStyle: 'native' })), []);
+  const cssFull = flatFull.map((n) => n.css || '');
+  assert.ok(cssFull.some((c) => c.includes('height:220px')), '默认 cap 双图网格应为 height:220px');
+
+  // cap=0.5：同一网格图片高度减半（220*0.5=110px），且不再出现 220px
+  const flatHalf = flatten(XS.buildCard(cardPay({ theme: LIGHT, cardStyle: 'native', mediaCap: 0.5 })), []);
+  const cssHalf = flatHalf.map((n) => n.css || '');
+  assert.ok(cssHalf.some((c) => c.includes('height:110px')), 'cap=0.5 双图网格应为 height:110px');
+  assert.ok(!cssHalf.some((c) => c.includes('height:220px')), 'cap=0.5 不应再有 220px 的媒体高度');
+
+  // 文字层不受 cap 影响（裁图不裁文）：正文字号仍 17px
+  assert.ok(cssHalf.some((c) => c.includes('font-size:17px')), 'cap 不应改动正文字号（裁图不裁文）');
 });
 
 test('emit-card：引用框含引用作者名与引用图片；纯图评论头像字母回退', () => {
