@@ -22,6 +22,7 @@
     translateDefault: true,
     cfg: {
       autoHotDefault: true, autoHotN: 10,
+      cardTheme: 'follow', cardStyle: 'native',
       redactEnabled: false, redactMode: 'rules', redactTerms: '',
       redactPII: false, redactImages: false,
       publishTarget: 'none', publishConfigured: false,
@@ -60,6 +61,8 @@
     state.cfg = {
       autoHotDefault: c.autoHotDefault !== false,
       autoHotN: c.autoHotN || 10,
+      cardTheme: c.cardTheme || 'follow',
+      cardStyle: c.cardStyle === 'reading' ? 'reading' : 'native',
       redactEnabled: !!c.redactEnabled,
       redactMode: c.redactMode || 'rules',
       redactTerms: c.redactTerms || '',
@@ -103,7 +106,7 @@
     attachObserver();
 
     if (state.cfg.autoHotDefault) autoSelectHot(); // 默认进入即自动按热度选取，之后仍可手动增减
-    else XS.ui.toast('点击评论勾选，或用「🔥 自动选热门」一键筛选');
+    else XS.ui.toast('点击评论勾选，或用「自动选热门」一键筛选');
   }
 
   function exitSelection() {
@@ -182,10 +185,14 @@
       redactMode: state.cfg.redactMode,
       redactEnabled: state.cfg.redactEnabled,
       autoHotN: state.cfg.autoHotN,
+      cardTheme: state.cfg.cardTheme,
+      cardStyle: state.cfg.cardStyle,
       maxReplies: MAX_REPLIES,
       defaultAutoN: DEFAULT_AUTO_N,
       onAuto: autoSelectHot,
       onAutoNChange: (n) => { state.cfg.autoHotN = n; chrome.storage.local.set({ autoHotN: n }); },
+      onThemeChange: (v) => { state.cfg.cardTheme = v; chrome.storage.local.set({ cardTheme: v }); },
+      onStyleChange: (v) => { state.cfg.cardStyle = v; chrome.storage.local.set({ cardStyle: v }); },
       onGenImage: generateImage,
       onGenWeb: generateWebpage,
       onCancel: exitSelection,
@@ -302,6 +309,9 @@
         onStage: (t) => XS.ui.setOverlay(t),
       });
       payload.note = XS.pipeline.joinNotes(transError, payload.redactNote);
+      // 主题在生成时解析：'follow' 读当前 X 页面背景判定主题；固定项直选。风格仅影响长图。
+      payload.theme = XS.theme.themeFor(bar.cardTheme());
+      payload.cardStyle = bar.cardStyle();
       await render(payload);
     } catch (e) {
       XS.ui.hideOverlay();

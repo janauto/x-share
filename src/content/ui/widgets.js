@@ -11,12 +11,31 @@
   const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
   // ---------- fab ----------
+  // 「无痕」向内隐形：清除 emoji 控件，用素文案（视觉再向 X compose 圆钮靠拢属 P2）
   function makeFab(onClick) {
     const fab = document.createElement('button');
     fab.className = 'xs-fab';
-    fab.textContent = '📤 生成转发卡片';
+    fab.textContent = '生成转发卡片';
     fab.addEventListener('click', onClick);
     return fab;
+  }
+
+  // 带标签的下拉选择（主题 / 卡片风格），返回 { label, select }
+  function mkSelect(text, options, value, title) {
+    const label = document.createElement('label');
+    label.className = 'xs-sel';
+    if (title) label.title = title;
+    label.appendChild(document.createTextNode(text));
+    const select = document.createElement('select');
+    options.forEach((o) => {
+      const opt = document.createElement('option');
+      opt.value = o.value;
+      opt.textContent = o.text;
+      if (o.value === value) opt.selected = true;
+      select.appendChild(opt);
+    });
+    label.appendChild(select);
+    return { label, select };
   }
 
   // ---------- mkCheck / btn ----------
@@ -60,7 +79,7 @@
     autoWrap.className = 'xs-autowrap';
     const autoBtn = document.createElement('button');
     autoBtn.className = 'xs-btn sec';
-    autoBtn.textContent = '🔥 自动选热门';
+    autoBtn.textContent = '自动选热门';
     autoBtn.title = '滚动评论区、按热度自动选出前 N 条，之后仍可手动增减';
     autoBtn.addEventListener('click', opts.onAuto);
     autoWrap.appendChild(autoBtn);
@@ -99,6 +118,24 @@
     );
     bar.appendChild(barRedact.label);
 
+    // 主题（跟随 X / 三固定主题）——影响长图与网页
+    const themeSel = mkSelect('主题', [
+      { value: 'follow', text: '跟随X' },
+      { value: 'light', text: '浅色' },
+      { value: 'dim', text: '暗蓝' },
+      { value: 'lightsout', text: '纯黑' },
+    ], opts.cardTheme || 'follow', '产出图/网页的主题：跟随 X 当前主题，或固定浅色/暗蓝/纯黑');
+    themeSel.select.addEventListener('change', () => opts.onThemeChange && opts.onThemeChange(themeSel.select.value));
+    bar.appendChild(themeSel.label);
+
+    // 卡片风格——仅影响长图
+    const styleSel = mkSelect('风格', [
+      { value: 'native', text: 'X 原生风' },
+      { value: 'reading', text: '阅读排版风' },
+    ], opts.cardStyle || 'native', 'X 原生风=像一张 X 详情页截图；阅读排版风=蓝边译文块、大字号，适合长文/公众号');
+    styleSel.select.addEventListener('change', () => opts.onStyleChange && opts.onStyleChange(styleSel.select.value));
+    bar.appendChild(styleSel.label);
+
     const genImg = document.createElement('button');
     genImg.className = 'xs-btn pri';
     genImg.textContent = '生成长图';
@@ -123,6 +160,8 @@
       isTranslate: () => barTrans.input.checked,
       isRedact: () => barRedact.input.checked,
       autoN: () => clamp(parseInt(barAutoN.value, 10) || defaultAutoN, 1, maxReplies),
+      cardTheme: () => themeSel.select.value,
+      cardStyle: () => styleSel.select.value,
     };
   }
 

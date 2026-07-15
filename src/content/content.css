@@ -100,6 +100,17 @@ article.xs-selected {
   font-size: 13px;
   font-family: inherit;
 }
+.xs-sel { color: #e7e9ea; font-size: 13.5px; }
+.xs-sel select {
+  border: none;
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  background: #273340;
+  color: #e7e9ea;
+  cursor: pointer;
+}
 
 .xs-btn {
   border: none;

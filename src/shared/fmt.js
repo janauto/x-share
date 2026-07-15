@@ -28,6 +28,34 @@
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
   }
 
+  // ISO 时间 → X 原生中文格式「下午3:42 · 2026年7月15日」（仿真截图的关键保真项）。
+  // 12 小时制 + 上午/下午；年月日不补零，与 X 中文界面一致。非法/空值返回空串。
+  function fmtTimeNative(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    const h = d.getHours();
+    const period = h < 12 ? '上午' : '下午';
+    let h12 = h % 12;
+    if (h12 === 0) h12 = 12;
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${period}${h12}:${mm} · ${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+  }
+
+  // 数字 → X 中文界面互动量格式：<1万 用千分位（2,912）；≥1万 用「1.2万」；≥1亿 用「1.2亿」。
+  // 小数位：整数时不带 .0（1万 而非 1.0万）。负数/非数退 '0'。
+  function formatCountCN(n) {
+    const v = Number(n);
+    if (!isFinite(v) || v < 0) return '0';
+    const unit = (x, u) => {
+      const s = (Math.round(x * 10) / 10).toString();
+      return s + u;
+    };
+    if (v >= 1e8) return unit(v / 1e8, '亿');
+    if (v >= 1e4) return unit(v / 1e4, '万');
+    return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
   // 把 "1.2K" / "3.4M" / "1.2万" / "5,432" 解析成数字
   function parseCount(s) {
     if (!s) return 0;
@@ -78,6 +106,8 @@
 
   XS.esc = esc;
   XS.fmtDate = fmtDate;
+  XS.fmtTimeNative = fmtTimeNative;
+  XS.formatCountCN = formatCountCN;
   XS.parseCount = parseCount;
   XS.needsTranslation = needsTranslation;
   XS.avatarInitial = avatarInitial;
@@ -85,6 +115,6 @@
   XS.buildTitle = buildTitle;
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { esc, fmtDate, parseCount, needsTranslation, avatarInitial, avatarColor, buildTitle };
+    module.exports = { esc, fmtDate, fmtTimeNative, formatCountCN, parseCount, needsTranslation, avatarInitial, avatarColor, buildTitle };
   }
 })();

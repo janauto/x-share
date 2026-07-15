@@ -23,6 +23,9 @@
     // 评论：进入选择模式时自动按热度选取前 N 条
     autoHotDefault: true,
     autoHotN: 10,
+    // 卡片外观（「无痕 Seamless」新版）
+    cardTheme: 'follow', // 'follow' | 'light' | 'dim' | 'lightsout'（follow=跟随 X 当前主题）
+    cardStyle: 'native', // 'native'（X 原生截图风）| 'reading'（阅读排版风）
     // 敏感内容屏蔽
     redactEnabled: false,
     redactMode: 'rules', // 'rules' | 'model'
@@ -53,6 +56,8 @@
       translateDefault: c.translateDefault !== false,
       autoHotDefault: c.autoHotDefault !== false,
       autoHotN: c.autoHotN || 10,
+      cardTheme: c.cardTheme || 'follow',
+      cardStyle: c.cardStyle === 'reading' ? 'reading' : 'native',
       redactEnabled: !!c.redactEnabled,
       redactMode: c.redactMode || 'rules',
       redactTerms: c.redactTerms || '',

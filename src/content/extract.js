@@ -252,6 +252,23 @@
     return null;
   };
 
+  // 认证徽章：X 在 User-Name 里放 svg[data-testid="icon-verified"]（或带 Verified aria-label）。
+  // kind 用于选蓝/金/灰路径：默认蓝；aria-label / 类名含机构/政府线索时升级。
+  // 注意：kind 的精确判定依赖 X 当前 DOM，属需浏览器校验项（见 README 回归清单）。
+  function extractVerified(scope, quoteEl) {
+    for (const un of scope.querySelectorAll('[data-testid="User-Name"]')) {
+      if (quoteEl && quoteEl.contains(un)) continue;
+      const svg = un.querySelector('svg[data-testid="icon-verified"], svg[aria-label*="Verified"], svg[aria-label*="认证"]');
+      if (!svg) return { verified: false, verifiedKind: null };
+      const hint = ((svg.getAttribute('aria-label') || '') + ' ' + (un.className || '')).toLowerCase();
+      let kind = 'blue';
+      if (/gov|government|政府/.test(hint)) kind = 'gray';
+      else if (/business|organization|机构|企业|gold/.test(hint)) kind = 'gold';
+      return { verified: true, verifiedKind: kind };
+    }
+    return { verified: false, verifiedKind: null };
+  }
+
   function extractFrom(scope, isQuote) {
     const quoteEl = isQuote ? null : findQuote(scope);
 
@@ -293,9 +310,11 @@
       id = permalink.match(ID_RE)[1];
     }
 
+    const { verified, verifiedKind } = extractVerified(scope, quoteEl);
+
     const d = {
       id, permalink, name, handle, avatar, avatarSrc, segments, plainText,
-      photos, blocks, hasVideo, videoPoster, datetime,
+      photos, blocks, hasVideo, videoPoster, datetime, verified, verifiedKind,
       quote: null, translation: null,
     };
     if (quoteEl) d.quote = extractFrom(quoteEl, true);
