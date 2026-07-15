@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "X 转发卡片",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "把推文（含中文翻译和你勾选的评论）生成双语长图或网页，方便转发到微信。长图跟随 X 主题、X 原生截图风皮肤、比例预设与零摩擦快捷通道。",
   "icons": {
     "16": "icons/icon16.png",
