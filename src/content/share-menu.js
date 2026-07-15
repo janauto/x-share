@@ -66,6 +66,10 @@
 
     // 克隆参照项：样式/结构原样继承，替换文案与图标
     const clone = anchor.cloneNode(true);
+    // 克隆会连 id / aria-selected 一起复制，可能与原生项冲突（重复 id、错误选中态）——清掉。
+    clone.removeAttribute('id');
+    clone.removeAttribute('aria-selected');
+    clone.style.cursor = 'pointer'; // 兜底：有些菜单项的手型依赖 hover class，克隆后可能丢失
     clone.setAttribute(`data-${ITEM_MARK}`, '1');
     // 替换文案：找最深的纯文本 span
     const spans = [...clone.querySelectorAll('span')].filter((s) => !s.children.length && (s.textContent || '').trim());

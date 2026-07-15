@@ -406,8 +406,11 @@
     };
 
     let busy = false;
+    let pending = false;
     async function rerender() {
-      if (busy) return; // 简单节流：渲染中忽略新改动（控件状态已更新，下次点击会带上）
+      // 渲染中又来一次改动：置 pending，当前这轮结束后再用「最新 settings」补跑一轮，
+      // 避免旧实现「busy 时直接 return」把渲染中的改动静默吞掉（settings 变了却不重渲染）。
+      if (busy) { pending = true; return; }
       busy = true;
       img.classList.add('rendering');
       m.setStatus('重新渲染…');
@@ -423,6 +426,7 @@
       } finally {
         img.classList.remove('rendering');
         busy = false;
+        if (pending) { pending = false; rerender(); } // 补跑一轮，带上期间累计的最新 settings
       }
     }
     const changed = (key) => (v) => {
