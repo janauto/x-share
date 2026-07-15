@@ -21,6 +21,11 @@
   // 视觉重心：文字略偏上（非几何中心），符合截图的自然观感
   const TOP_SHARE = 0.42;
 
+  // 媒体缩放阶梯（设计 §4.3「裁图不裁文」）：固定比例下内容超出目标高度时，
+  // 逐级把媒体（图片/视频封面）高度乘以这些系数——文字与结构不动，只压缩媒体，
+  // 直到卡片高度落进目标比例。1 = 原始尺寸；渲染方从大到小试，取首个能装下的。
+  const CAP_LADDER = [1, 0.7, 0.5, 0.35];
+
   // 补白计划：给定渲染出的 (w, h) 像素与比例 key，返回
   //   { mode:'natural' }                          智能 / 未知 key —— 原样导出
   //   { mode:'pad', top, bottom, targetH }        内容不足 —— 上下补背景色
@@ -35,9 +40,9 @@
     return { mode: 'pad', top, bottom: extra - top, targetH };
   }
 
-  XS.ratio = { RATIOS, RATIO_KEYS, padPlan, TOP_SHARE };
+  XS.ratio = { RATIOS, RATIO_KEYS, padPlan, TOP_SHARE, CAP_LADDER };
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { RATIOS, RATIO_KEYS, padPlan, TOP_SHARE };
+    module.exports = { RATIOS, RATIO_KEYS, padPlan, TOP_SHARE, CAP_LADDER };
   }
 })();

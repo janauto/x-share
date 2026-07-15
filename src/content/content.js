@@ -11,6 +11,7 @@
   const XS = window.__XS;
   const MAX_REPLIES = 20;
   const DEFAULT_AUTO_N = 10;
+  const CARD_WIDTH = 600; // 与 emit-card / raster 的卡片根宽度一致；比例测量以此为基准
 
   const state = {
     selecting: false,
@@ -269,9 +270,29 @@
     payload.theme = XS.theme.themeFor(settings.theme);
     payload.cardStyle = settings.style;
     payload.show = { eng: settings.showEng, time: settings.showTime, footer: settings.showFooter };
+    // 裁图不裁文：固定比例下先跑 media-cap 阶梯测量，挑一个能装进目标比例的媒体缩放系数；
+    // 智能长图（smart）不缩放，cap 恒 1。
+    payload.mediaCap = await resolveMediaCap(payload, settings.ratio);
     const card = XS.buildCard(payload);
     const r = await XS.renderCardToPng(card, { ratio: settings.ratio });
     return { blob: r.blob, note: XS.pipeline.joinNotes(payload.note, r.note) };
+  }
+
+  // media-cap 阶梯：从 CAP_LADDER 由大到小构建卡片、离屏测高，取首个 h <= CARD_WIDTH*aspect 的
+  // cap；全阶梯仍超出则用最小 cap（后续 padCanvasToRatio 会给出「压缩后仍超出」提示）。
+  // 智能长图 / 未知比例 → cap=1（不进循环）。
+  async function resolveMediaCap(payload, ratioKey) {
+    const aspect = XS.ratio.RATIOS[ratioKey];
+    if (!aspect) return 1;
+    const targetH = CARD_WIDTH * aspect;
+    const ladder = XS.ratio.CAP_LADDER;
+    for (const cap of ladder) {
+      payload.mediaCap = cap;
+      const probe = XS.buildCard(payload);
+      const h = await XS.measureCardHeight(probe);
+      if (h <= targetH) return cap;
+    }
+    return ladder[ladder.length - 1];
   }
 
   function cardSettings() {
@@ -367,7 +388,13 @@
       XS.ui.hideOverlay();
       const ok = await XS.ui.copyBlob(r.blob);
       if (ok) XS.ui.toast('已复制，去微信粘贴即可');
-      else { XS.ui.downloadUrl(URL.createObjectURL(r.blob), cardFilename()); XS.ui.toast('剪贴板不可用，已改为下载 PNG'); }
+      else {
+        // 局部持有 url 以便下载后回收，避免 objectURL 泄漏
+        const url = URL.createObjectURL(r.blob);
+        XS.ui.downloadUrl(url, cardFilename());
+        XS.ui.toast('剪贴板不可用，已改为下载 PNG');
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
     } catch (e) {
       XS.ui.hideOverlay();
       XS.ui.toast('生成失败：' + ((e && e.message) || e));

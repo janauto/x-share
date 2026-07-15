@@ -16,6 +16,22 @@
     return Promise.all(jobs);
   }
 
+  // 纯测量：把卡片挂进离屏 holder、等图片 decode、量 CSS 高度、拆除。不跑 html2canvas，
+  // 供 content 的 media-cap 阶梯循环快速探高（裁图不裁文）——比一次真栅格化便宜得多。
+  // 返回 CSS 像素高度（卡片宽固定 CARD_WIDTH，故可直接与 CARD_WIDTH*aspect 比较）。
+  XS.measureCardHeight = async function (card) {
+    const holder = document.createElement('div');
+    holder.style.cssText = 'position:fixed;left:-99999px;top:0;z-index:-1;';
+    holder.appendChild(card);
+    document.body.appendChild(holder);
+    try {
+      await waitForImages(card);
+      return Math.ceil(card.getBoundingClientRect().height);
+    } finally {
+      holder.remove();
+    }
+  };
+
   // 固定比例补白（设计 §06 规则 3「补白不缩放」）：内容不足目标比例时按视觉重心
   // （略偏上）上下补背景色；内容超出时不裁（分页属二期），原样返回并附原因。
   // 计划纯逻辑在 shared/ratio.js（可单测），这里只做 canvas 搬运。
@@ -23,7 +39,7 @@
     const plan = XS.ratio.padPlan(canvas.width, canvas.height, ratioKey);
     if (plan.mode === 'natural') return { canvas, note: null };
     if (plan.mode === 'overflow') {
-      return { canvas, note: `内容超出 ${ratioKey} 比例，已按智能长图导出（分页裁切在路线图中）` };
+      return { canvas, note: `内容超出 ${ratioKey} 比例，已压缩图片后仍超出，按智能长图导出` };
     }
     const out = document.createElement('canvas');
     out.width = canvas.width;

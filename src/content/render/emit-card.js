@@ -119,7 +119,10 @@
   function appendVideoNode(parent, node, ctx) {
     const theme = ctx.theme;
     if (node.poster) {
-      const v = el('div', `margin-top:14px;position:relative;border-radius:16px;overflow:hidden;border:1px solid ${theme.border};`);
+      // 封面容器 max-height 随 mediaCap 阶梯收缩（裁图不裁文）：overflow:hidden 令超出部分内裁，
+      // 等效 object-fit:cover 的视觉。cap<1 时封面变矮，卡片总高下降，去挤进固定比例。
+      const capH = ctx.videoMaxH ? `max-height:${ctx.videoMaxH}px;` : '';
+      const v = el('div', `margin-top:14px;position:relative;border-radius:16px;overflow:hidden;border:1px solid ${theme.border};${capH}`);
       const img = el('img', 'width:100%;display:block;');
       img.src = node.poster;
       v.appendChild(img);
@@ -162,17 +165,23 @@
     reply: { fs: 15, lh: 1.4, mt: 4 },
   };
 
-  function nativeCtx(theme, level) {
+  // 媒体高度阶梯（裁图不裁文）：cap 默认 1；固定比例超高时由 content 从 CAP_LADDER
+  // 逐级下调，这里把所有像素高度乘 cap（Math.round），文字层不受影响。
+  const NATIVE_VIDEO_BASE = { main: 510, quote: 320, reply: 260 };
+  function nativeCtx(theme, level, mediaCap) {
     const L = NATIVE_LEVEL[level];
+    const cap = mediaCap > 0 ? mediaCap : 1;
+    const r = (v) => Math.round(v * cap);
     return {
       theme,
+      videoMaxH: r(NATIVE_VIDEO_BASE[level] || 320),
       photosMt: level === 'main' ? 12 : 10,
       containerExtra: level === 'reply' ? 'max-width:440px;' : '',
       imgH: (n, i) =>
-        n === 1 ? (level === 'reply' ? 'height:auto;max-height:300px;' : 'height:auto;max-height:510px;')
-        : n === 2 ? 'height:220px;'
-        : n === 3 ? (i === 0 ? 'grid-row:span 2;height:304px;' : 'height:150px;')
-        : 'height:170px;',
+        n === 1 ? (level === 'reply' ? `height:auto;max-height:${r(300)}px;` : `height:auto;max-height:${r(510)}px;`)
+        : n === 2 ? `height:${r(220)}px;`
+        : n === 3 ? (i === 0 ? `grid-row:span 2;height:${r(304)}px;` : `height:${r(150)}px;`)
+        : `height:${r(170)}px;`,
       textCss: () => `white-space:pre-wrap;word-wrap:break-word;margin-top:${L.mt}px;font-size:${L.fs}px;line-height:${L.lh};color:${theme.text};`,
       // 原生翻译：细分隔上方 + 「已翻译自 英语」小标签 + 纯文本译文（关键保真：非蓝框块）
       appendTranslation: (parent, node) => {
@@ -182,11 +191,11 @@
         parent.appendChild(lbl);
         parent.appendChild(el('div', `margin-top:2px;font-size:${L.fs}px;line-height:${L.lh};color:${theme.text};white-space:pre-wrap;word-wrap:break-word;`, node.text));
       },
-      quoteBox: (node) => nativeQuoteBox(node, theme),
+      quoteBox: (node) => nativeQuoteBox(node, theme, cap),
     };
   }
 
-  function nativeQuoteBox(node, theme) {
+  function nativeQuoteBox(node, theme, cap) {
     const q = node.tweet;
     const box = el('div', `box-sizing:border-box;margin-top:12px;border:1px solid ${theme.border};border-radius:16px;padding:12px 14px;`);
     const head = el('div', 'display:flex;align-items:center;gap:6px;');
@@ -195,7 +204,7 @@
     if (q.verified) head.appendChild(svgIcon(PATHS.verified, 15, BADGE_FILL[q.verifiedKind] || BADGE_FILL.blue));
     head.appendChild(el('span', `font-size:13px;color:${theme.text2};line-height:1.4;`, q.handle || ''));
     box.appendChild(head);
-    walkIR(box, XS.buildIR(q), nativeCtx(theme, 'quote'));
+    walkIR(box, XS.buildIR(q), nativeCtx(theme, 'quote', cap));
     return box;
   }
 
@@ -217,7 +226,7 @@
     return row;
   }
 
-  function nativeReply(d, theme, show) {
+  function nativeReply(d, theme, show, cap) {
     const row = el('div', `display:flex;gap:10px;padding:14px 0 12px;border-bottom:1px solid ${theme.border};`);
     row.appendChild(avatarNode(d, 32, theme));
     const body = el('div', 'flex:1;min-width:0;');
@@ -226,7 +235,7 @@
     if (d.verified) line.appendChild(svgIcon(PATHS.verified, 14, BADGE_FILL[d.verifiedKind] || BADGE_FILL.blue));
     line.appendChild(el('span', `color:${theme.text2};font-weight:400;font-size:13px;`, d.handle || ''));
     body.appendChild(line);
-    walkIR(body, XS.buildIR(d), nativeCtx(theme, 'reply'));
+    walkIR(body, XS.buildIR(d), nativeCtx(theme, 'reply', cap));
     // 评论的迷你互动行（回复/喜欢），有数字且「互动数据」开启才出
     const e = d.engagement;
     if (show.eng && e && (e.replies || e.likes)) {
@@ -239,7 +248,7 @@
     return row;
   }
 
-  function buildNative(payload, theme, show) {
+  function buildNative(payload, theme, show, cap) {
     const { main, replies } = payload;
     // 深色主题默认加 1px 描边，防在微信白底聊天里边界消融（design §04「深色描边」）
     const outline = theme.key === 'light' ? '' : `border:1px solid ${theme.border};`;
@@ -266,7 +275,7 @@
 
     // 正文（间距略收，贴详情页）
     const bodyWrap = el('div', 'margin-top:4px;');
-    walkIR(bodyWrap, XS.buildIR(main), nativeCtx(theme, 'main'));
+    walkIR(bodyWrap, XS.buildIR(main), nativeCtx(theme, 'main', cap));
     root.appendChild(bodyWrap);
 
     // 原生时间行（「显示·时间」控制）
@@ -283,7 +292,7 @@
     if (replies && replies.length) {
       if (!show.eng) root.appendChild(el('div', `margin-top:12px;border-top:1px solid ${theme.border};`));
       const sec = el('div', 'margin-top:4px;');
-      replies.forEach((r) => sec.appendChild(nativeReply(r, theme, show)));
+      replies.forEach((r) => sec.appendChild(nativeReply(r, theme, show, cap)));
       root.appendChild(sec);
     }
 
@@ -309,19 +318,23 @@
     reply: { fs: 14.5, lh: 1.55, mt: 4, transFs: 14.5, transLh: 1.65, transRad: '0 8px 8px 0', transPad: '8px 10px', transMt: 8 },
   };
 
-  function readingCtx(theme, level) {
+  const READING_VIDEO_BASE = { main: 700, quote: 360, reply: 300 };
+  function readingCtx(theme, level, mediaCap) {
     const L = READING_LEVEL[level];
+    const cap = mediaCap > 0 ? mediaCap : 1;
+    const r = (v) => Math.round(v * cap);
     return {
       theme,
+      videoMaxH: r(READING_VIDEO_BASE[level] || 360),
       photosMt: level === 'main' ? 14 : level === 'quote' ? 10 : 8,
       containerExtra: level === 'reply' ? 'max-width:420px;' : '',
       imgH: (n, i) =>
         level === 'reply'
-          ? (n === 1 ? 'height:auto;max-height:300px;' : 'height:140px;')
-          : n === 1 ? `height:auto;max-height:${level === 'quote' ? 360 : 700}px;`
-          : n === 2 ? 'height:220px;'
-          : n === 3 ? (i === 0 ? 'grid-row:span 2;height:304px;' : 'height:150px;')
-          : 'height:170px;',
+          ? (n === 1 ? `height:auto;max-height:${r(300)}px;` : `height:${r(140)}px;`)
+          : n === 1 ? `height:auto;max-height:${r(level === 'quote' ? 360 : 700)}px;`
+          : n === 2 ? `height:${r(220)}px;`
+          : n === 3 ? (i === 0 ? `grid-row:span 2;height:${r(304)}px;` : `height:${r(150)}px;`)
+          : `height:${r(170)}px;`,
       // 有译文时正文压暗（text2），复刻原阅读风
       textCss: (hasTrans) => `white-space:pre-wrap;word-wrap:break-word;margin-top:${L.mt}px;font-size:${L.fs}px;line-height:${L.lh};color:${hasTrans ? theme.text2 : theme.text};`,
       appendTranslation: (parent, node) => {
@@ -333,11 +346,11 @@
           node.text
         ));
       },
-      quoteBox: (node) => readingQuoteBox(node, theme),
+      quoteBox: (node) => readingQuoteBox(node, theme, cap),
     };
   }
 
-  function readingQuoteBox(node, theme) {
+  function readingQuoteBox(node, theme, cap) {
     const q = node.tweet;
     const box = el('div', `box-sizing:border-box;margin-top:14px;border:1px solid ${theme.border};border-radius:14px;padding:12px 14px;`);
     const head = el('div', 'display:flex;align-items:center;gap:8px;');
@@ -345,11 +358,11 @@
     head.appendChild(el('span', `font-size:14px;font-weight:700;line-height:1.3;color:${theme.text};word-break:break-word;`, q.name || ''));
     head.appendChild(el('span', `font-size:12.5px;color:${theme.text2};line-height:1.4;`, q.handle || ''));
     box.appendChild(head);
-    walkIR(box, XS.buildIR(q), readingCtx(theme, 'quote'));
+    walkIR(box, XS.buildIR(q), readingCtx(theme, 'quote', cap));
     return box;
   }
 
-  function readingReply(d, theme) {
+  function readingReply(d, theme, cap) {
     const row = el('div', `display:flex;gap:10px;padding:14px 0 12px;border-bottom:1px solid ${theme.border};`);
     row.appendChild(avatarNode(d, 32, theme));
     const body = el('div', 'flex:1;min-width:0;');
@@ -357,12 +370,12 @@
     line.appendChild(el('b', 'font-weight:700;', d.name || ''));
     line.appendChild(el('span', `color:${theme.text2};font-weight:400;font-size:12.5px;margin-left:6px;`, d.handle || ''));
     body.appendChild(line);
-    walkIR(body, XS.buildIR(d), readingCtx(theme, 'reply'));
+    walkIR(body, XS.buildIR(d), readingCtx(theme, 'reply', cap));
     row.appendChild(body);
     return row;
   }
 
-  function buildReading(payload, theme, show) {
+  function buildReading(payload, theme, show, cap) {
     const { main, replies } = payload;
     const outline = theme.key === 'light' ? '' : `border:1px solid ${theme.border};`;
     const root = el(
@@ -383,12 +396,12 @@
     head.appendChild(svgIcon(PATHS.xlogo, 24, theme.text, 'margin-left:auto;align-self:flex-start;'));
     root.appendChild(head);
 
-    walkIR(root, XS.buildIR(main), readingCtx(theme, 'main'));
+    walkIR(root, XS.buildIR(main), readingCtx(theme, 'main', cap));
 
     if (replies && replies.length) {
       const sec = el('div', 'margin-top:22px;');
       sec.appendChild(el('div', `font-size:13px;color:${theme.text2};padding-bottom:6px;border-bottom:1px solid ${theme.border};`, `精选评论 · ${replies.length} 条`));
-      replies.forEach((r) => sec.appendChild(readingReply(r, theme)));
+      replies.forEach((r) => sec.appendChild(readingReply(r, theme, cap)));
       root.appendChild(sec);
     }
 
@@ -408,6 +421,7 @@
   // ---------- 出口：按 payload.cardStyle 选皮肤，payload.theme 决定主题 ----------
   // payload.theme 期望是 token 对象（pipeline 已 resolve）；缺失/字符串时兜底为 light。
   // payload.show = { eng, time, footer }：互动数据/时间 默认开，落款默认关（真截图不带来源行）。
+  // payload.mediaCap：媒体缩放系数（裁图不裁文），缺省 1（原始尺寸）；固定比例下由 content 下调。
   XS.buildCard = function (payload) {
     let theme = payload && payload.theme;
     if (!theme || typeof theme === 'string') {
@@ -421,7 +435,8 @@
       time: rawShow.time !== false,
       footer: !!rawShow.footer,
     };
+    const cap = (payload && typeof payload.mediaCap === 'number' && payload.mediaCap > 0) ? payload.mediaCap : 1;
     const style = (payload && payload.cardStyle) === 'reading' ? buildReading : buildNative;
-    return style(payload, theme, show);
+    return style(payload, theme, show, cap);
   };
 })();

@@ -46,3 +46,14 @@ test('padPlan：9:16 竖屏目标高取整', () => {
   assert.strictEqual(p.targetH, Math.round(1200 * 16 / 9)); // 2133
   assert.strictEqual(p.mode, 'pad');
 });
+
+test('CAP_LADDER：媒体缩放阶梯从大到小、首个为 1、末个最小、严格递减且都在 (0,1]', () => {
+  const ladder = ratio.CAP_LADDER;
+  assert.ok(Array.isArray(ladder) && ladder.length >= 3, '应是非空数组');
+  assert.strictEqual(ladder[0], 1, '首级应为原始尺寸 1');
+  assert.deepStrictEqual(ladder, [1, 0.7, 0.5, 0.35]);
+  for (let i = 1; i < ladder.length; i++) {
+    assert.ok(ladder[i] < ladder[i - 1], '应严格递减');
+    assert.ok(ladder[i] > 0 && ladder[i] <= 1, '每级应落在 (0,1]');
+  }
+});
