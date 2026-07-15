@@ -1,29 +1,11 @@
 // 后台 Service Worker：负责所有跨域网络请求（翻译 API、twimg 图片转 data URL）
 // 内容脚本受页面 CORS 限制，统一走这里。
+//
+// DEFAULTS / normalizeConfig 从 shared/config-schema.js 引入（DEFAULTS 唯一来源）。
+// importScripts 路径相对本 worker（src/background.js）所在目录解析，即 src/shared/。
 
-const DEFAULTS = {
-  apiKey: '',
-  apiBase: 'https://api.deepseek.com',
-  model: 'deepseek-chat',
-  translateDefault: true,
-  // 评论：进入选择模式时自动按热度选取前 N 条
-  autoHotDefault: true,
-  autoHotN: 10,
-  // 敏感内容屏蔽
-  redactEnabled: false,
-  redactMode: 'rules', // 'rules' | 'model'
-  redactTerms: '',
-  redactPII: false,
-  redactImages: false,
-  // 网页发布后端
-  publishTarget: 'none', // 'none' | 'gist' | 'custom'
-  gistToken: '',
-  publishEndpoint: '',
-  // 更新检测
-  updateCheckEnabled: true,
-  updateCheckIntervalHours: 6,
-  updateGithubToken: '',
-};
+importScripts('shared/config-schema.js');
+const { DEFAULTS, normalizeConfig } = globalThis.__XS;
 
 const UPDATE_REPO = {
   owner: 'janauto',
@@ -73,65 +55,41 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === UPDATE_ALARM_NAME) checkForUpdates({ silent: true });
 });
 
+// 表驱动 handler 注册：每个 handler 返回其领域结果（形状与旧 switch 一致），
+// 统一在外层做 try/catch → { error }。新增/改动消息只需在此表增删。
+const HANDLERS = {
+  // 归一化后的 content 侧 cfg（含 publishConfigured）
+  getConfig: async () => normalizeConfig(await getCfg()),
+
+  // 批量抓图：一条消息多 URL，逐 URL 失败填 null，不让单张失败拖垮整批
+  fetchImages: async (msg) => ({
+    dataUrls: await Promise.all(
+      (msg.urls || []).map((u) => fetchImageAsDataUrl(u).catch(() => null))
+    ),
+  }),
+  // 单张抓图（旧协议）：content 侧管线切到批量 fetchImages 后即无调用方，保留仅为兼容
+  fetchImage: async (msg) => ({ dataUrl: await fetchImageAsDataUrl(msg.url) }),
+
+  translate: (msg) => translateTexts(msg.texts || []),
+  redact: (msg) => redactTexts(msg.texts || []),
+  publish: (msg) => publishHtml(msg.html || ''),
+
+  getUpdateStatus: () => getUpdateStatus(),
+  checkUpdate: () => checkForUpdates({ silent: false }),
+  setUpdateCheckEnabled: async (msg) => {
+    await chrome.storage.local.set({ updateCheckEnabled: !!msg.enabled });
+    await setupUpdateAlarm();
+    if (!msg.enabled) await setUpdateBadge(false);
+    return getUpdateStatus();
+  },
+};
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  const handler = msg && HANDLERS[msg.type];
   (async () => {
     try {
-      switch (msg && msg.type) {
-        case 'getConfig': {
-          const c = await getCfg();
-          const publishConfigured =
-            (c.publishTarget === 'gist' && !!c.gistToken) ||
-            (c.publishTarget === 'custom' && !!c.publishEndpoint) ||
-            (c.publishTarget === 'cloudbase' && !!c.publishEndpoint);
-          sendResponse({
-            hasKey: !!c.apiKey,
-            translateDefault: c.translateDefault !== false,
-            autoHotDefault: c.autoHotDefault !== false,
-            autoHotN: c.autoHotN || 10,
-            redactEnabled: !!c.redactEnabled,
-            redactMode: c.redactMode || 'rules',
-            redactTerms: c.redactTerms || '',
-            redactPII: !!c.redactPII,
-            redactImages: !!c.redactImages,
-            publishTarget: c.publishTarget || 'none',
-            publishConfigured,
-          });
-          break;
-        }
-        case 'fetchImage': {
-          sendResponse({ dataUrl: await fetchImageAsDataUrl(msg.url) });
-          break;
-        }
-        case 'translate': {
-          sendResponse(await translateTexts(msg.texts || []));
-          break;
-        }
-        case 'redact': {
-          sendResponse(await redactTexts(msg.texts || []));
-          break;
-        }
-        case 'publish': {
-          sendResponse(await publishHtml(msg.html || ''));
-          break;
-        }
-        case 'getUpdateStatus': {
-          sendResponse(await getUpdateStatus());
-          break;
-        }
-        case 'checkUpdate': {
-          sendResponse(await checkForUpdates({ silent: false }));
-          break;
-        }
-        case 'setUpdateCheckEnabled': {
-          await chrome.storage.local.set({ updateCheckEnabled: !!msg.enabled });
-          await setupUpdateAlarm();
-          if (!msg.enabled) await setUpdateBadge(false);
-          sendResponse(await getUpdateStatus());
-          break;
-        }
-        default:
-          sendResponse({ error: 'unknown message type' });
-      }
+      if (!handler) { sendResponse({ error: 'unknown message type' }); return; }
+      sendResponse(await handler(msg));
     } catch (e) {
       sendResponse({ error: String((e && e.message) || e) });
     }

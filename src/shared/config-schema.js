@@ -1,0 +1,72 @@
+// 配置 schema —— DEFAULTS 的唯一来源，三端共享。
+//
+// 加载方式（两栖模块）：
+//   - service worker：background.js 顶部 importScripts('shared/config-schema.js')，
+//     随后从 globalThis.__XS 取 DEFAULTS / normalizeConfig；
+//   - options 设置页：options.html 用 <script src="../shared/config-schema.js"> 先引，
+//     options.js 从 window.__XS 取 DEFAULTS；
+//   - 内容脚本：manifest content_scripts 里排在最前，content.js 经 onChanged 复用 normalizeConfig。
+//
+// service worker 没有 window，一律挂 globalThis；node 单测走 module.exports。
+
+(() => {
+  const XS = (globalThis.__XS = globalThis.__XS || {});
+
+  // 合并原 background.js 与 options/options.js 两份 DEFAULTS。
+  // 差异吸收：background 版独有 updateCheckIntervalHours（options 版缺失，现补入）。
+  // publishTarget 合法值：'none' | 'gist' | 'custom' | 'cloudbase'。
+  const DEFAULTS = {
+    apiKey: '',
+    apiBase: 'https://api.deepseek.com',
+    model: 'deepseek-chat',
+    translateDefault: true,
+    // 评论：进入选择模式时自动按热度选取前 N 条
+    autoHotDefault: true,
+    autoHotN: 10,
+    // 敏感内容屏蔽
+    redactEnabled: false,
+    redactMode: 'rules', // 'rules' | 'model'
+    redactTerms: '',
+    redactPII: false,
+    redactImages: false,
+    // 网页发布后端
+    publishTarget: 'none', // 'none' | 'gist' | 'custom' | 'cloudbase'
+    gistToken: '',
+    publishEndpoint: '',
+    // 更新检测
+    updateCheckEnabled: true,
+    updateCheckIntervalHours: 6,
+    updateGithubToken: '',
+  };
+
+  // 把原始 storage 值归一化成「content 侧要用的 cfg 视图」。
+  // 吸收原 background.js getConfig 分支里的手工整形（含 publishConfigured 计算）。
+  // 只读、纯函数：传入 storage.get 的结果，返回内容脚本消费的规整对象。
+  function normalizeConfig(c) {
+    c = c || {};
+    const publishConfigured =
+      (c.publishTarget === 'gist' && !!c.gistToken) ||
+      (c.publishTarget === 'custom' && !!c.publishEndpoint) ||
+      (c.publishTarget === 'cloudbase' && !!c.publishEndpoint);
+    return {
+      hasKey: !!c.apiKey,
+      translateDefault: c.translateDefault !== false,
+      autoHotDefault: c.autoHotDefault !== false,
+      autoHotN: c.autoHotN || 10,
+      redactEnabled: !!c.redactEnabled,
+      redactMode: c.redactMode || 'rules',
+      redactTerms: c.redactTerms || '',
+      redactPII: !!c.redactPII,
+      redactImages: !!c.redactImages,
+      publishTarget: c.publishTarget || 'none',
+      publishConfigured,
+    };
+  }
+
+  XS.DEFAULTS = DEFAULTS;
+  XS.normalizeConfig = normalizeConfig;
+
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { DEFAULTS, normalizeConfig };
+  }
+})();

@@ -1,21 +1,5 @@
-const DEFAULTS = {
-  apiKey: '',
-  apiBase: 'https://api.deepseek.com',
-  model: 'deepseek-chat',
-  translateDefault: true,
-  autoHotDefault: true,
-  autoHotN: 10,
-  redactEnabled: false,
-  redactMode: 'rules',
-  redactTerms: '',
-  redactPII: false,
-  redactImages: false,
-  publishTarget: 'none',
-  gistToken: '',
-  publishEndpoint: '',
-  updateCheckEnabled: true,
-  updateGithubToken: '',
-};
+// DEFAULTS 来自 shared/config-schema.js（options.html 里先于本脚本 <script> 引入）。
+const DEFAULTS = window.__XS.DEFAULTS;
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $('status');

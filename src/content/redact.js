@@ -5,7 +5,7 @@
 // 内置的仅是可选的 PII（手机号/邮箱/长数字）正则，帮用户避免误发个人信息。
 
 (() => {
-  const XS = (window.__XS = window.__XS || {});
+  const XS = (globalThis.__XS = globalThis.__XS || {});
 
   function escapeRe(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -91,4 +91,15 @@
       img.src = dataUrl;
     });
   };
+
+  // 两栖导出：node 单测取 compileRedactTerms / redactTextCount 等纯逻辑
+  // （pixelateDataUrl 依赖 DOM，仅在浏览器里调用，不在 node 执行）。
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+      compileRedactTerms: XS.compileRedactTerms,
+      redactText: XS.redactText,
+      redactTextCount: XS.redactTextCount,
+      pixelateDataUrl: XS.pixelateDataUrl,
+    };
+  }
 })();
