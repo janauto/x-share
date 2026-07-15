@@ -108,25 +108,55 @@ bash scripts/package.sh          # 产物：dist/x-share-v<版本>.zip
 ## 项目结构
 
 ```
-manifest.json               MV3 清单
+manifest.json               MV3 清单（content_scripts 的加载顺序是依赖声明，勿乱动）
 LICENSE                     MIT 许可证
 scripts/package.sh          打包成可分发 zip
 vendor/html2canvas.min.js   第三方：DOM 逐元素栅格化（MIT）
-src/background.js           后台：翻译 / 模型打码 / Gist·自定义发布 / 更新检测 / twimg 图片转 data URL
+src/shared/                 两栖纯逻辑模块（globalThis.__XS + module.exports，三端共享、node 可测）
+  config-schema.js          DEFAULTS 唯一来源 + 配置归一化（normalizeConfig）
+  fmt.js                    esc / fmtDate / parseCount / needsTranslation / 字母头像 / buildTitle
+  blocks.js                 有序块模型：blocksOf / blockPhotos / segments 聚合
+  ir.js                     payload → RenderIR（唯一一次语义遍历：blocks 兜底、译文位置、引用递归）
+  rpc.js                    content 侧消息信封 + 具名方法（getConfig / fetchImages / translate / redact / publish）
+src/background.js           后台：importScripts(shared) + 表驱动 handler；翻译 / 模型打码 / 发布 / 更新检测 / 批量抓图
 src/content/extract.js      DOM 提取 + 热度解析（data-testid 锚点，改版时先查这里）
 src/content/redact.js       敏感内容打码：规则正则、PII、图片像素化
-src/content/card.js         双语长图构建（内联样式）+ html2canvas → PNG
-src/content/webpage.js      自包含网页 HTML 构建 + 「复制图文」富文本片段
+src/content/render/         四个哑发射器 + 栅格化（只对 IR 节点 switch，只管样式不管语义）
+  emit-card.js              IR → 内联样式 DOM（html2canvas 输入；x.com CSP 约束，全走 CSSOM）
+  emit-page.js              IR → 自包含网页 HTML
+  emit-rich.js              IR → 「复制图文」富文本片段
+  emit-text.js              IR → 纯文本兜底
+  raster.js                 卡片 DOM → html2canvas → PNG Blob
+src/content/ui/widgets.js   页面内 UI 组件：fab / 操作栏 / 弹窗 / 遮罩 / toast / 预览
+src/content/pipeline.js     生成管线：批量抓图内联 → 翻译 → 打码克隆（纯数据进出，经 rpc 走后台）
+src/content/content.js      仅编排：状态 + 事件接线（选择模式、自动选热门、触发管线与预览）
 src/content/txdocs.js       腾讯文档引导式半自动发布（仅 docs.qq.com 注入，右下角向导浮层）
-src/content/content.js      主流程：悬浮按钮、评论勾选/自动选、生成与预览
 src/content/content.css     页面内 UI 样式
-src/options/options.html    设置页（翻译 / 敏感打码 / 网页发布后端 / 更新检测）
+src/options/options.html    设置页（先引 shared/config-schema.js 再引 options.js）
 src/options/options.js      设置页逻辑：读写 chrome.storage、测试翻译
+test/                       node 内置 node:test 零依赖单测（config / fmt / blocks / ir / redact / 渲染金样）
 icons/                      扩展图标
 server/cloudbase-publish/   境内可访问链接的发布端（CloudBase 云函数，POST {html}→{url}）
 ```
 
-内容脚本按此顺序加载（见 `manifest.json`）：`vendor/html2canvas.min.js` → `extract.js` → `redact.js` → `card.js` → `webpage.js` → `content.js`。
+**内容脚本加载顺序是生命线**（见 `manifest.json`；本项目无构建、无模块系统，依赖全靠 `window.__XS` 命名空间 + 加载顺序满足）：
+
+```
+vendor/html2canvas.min.js
+→ src/shared/（config-schema → fmt → blocks → ir → rpc，纯逻辑、无相互依赖除 ir 依赖 blocks）
+→ extract.js / redact.js（数据层，依赖 shared/fmt、shared/blocks）
+→ render/emit-*.js + raster.js（渲染层，依赖 shared/ir、shared/fmt）
+→ ui/widgets.js + pipeline.js（依赖 shared/rpc、shared/fmt、redact.js）
+→ content.js（编排层，依赖以上全部）
+```
+
+顺序错误 = 白屏级故障。新增文件时按「被依赖者在前」插入对应位置。
+
+跑单测（只用 node 内置模块，零 npm 依赖）：
+
+```bash
+node --test test/
+```
 
 ## 第三方与许可
 

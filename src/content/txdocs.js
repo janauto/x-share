@@ -31,14 +31,12 @@
   }
 
   // 生成浮层标题：作者名 + 摘要，截断到 ~max 字。空值安全。
-  function buildTitle(name, text, max = 40) {
-    const n = String(name == null ? '' : name).trim();
-    const t = String(text == null ? '' : text).trim().replace(/\s+/g, ' ');
-    let s = n && t ? `${n}：${t}` : (n || t);
-    if (!s) s = '推文转发';
-    if (s.length > max) s = s.slice(0, max - 1) + '…';
-    return s;
-  }
+  // 实现已收敛到 shared/fmt.js（唯一一份）：node 里 require 兄弟模块，
+  // docs.qq.com 页面里由 manifest 先注入 shared/fmt.js、从 globalThis.__XS 取。
+  // 此处保留同名导出以兼容既有 node 单测约定（module.exports.buildTitle）。
+  const buildTitle = (typeof module !== 'undefined' && module.exports)
+    ? require('../shared/fmt.js').buildTitle
+    : globalThis.__XS.buildTitle;
 
   // 任务是否仍新鲜（10 分钟有效期）。畸形对象一律判为不新鲜（触发清理）。
   function isPendingFresh(obj, now = Date.now(), maxAgeMs = 10 * 60 * 1000) {

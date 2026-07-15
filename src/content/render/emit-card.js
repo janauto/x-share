@@ -1,15 +1,17 @@
-// 双语卡片的构建与 PNG 导出。
+// 发射器：RenderIR → 内联样式 DOM（html2canvas 的输入）。
 //
 // 样式一律用「逐元素内联 cssText」，不用 class + <style>，原因有二：
 //   1. html2canvas 渲染的是卡片的克隆副本，样式必须随节点树一起被 cloneNode 复制，
 //      内联样式能做到，外部/adopted 样式表做不到（克隆后丢样式 → 导出白版）。
 //   2. x.com 的 CSP(style-src) 会拦截注入的 <style> 和 setAttribute('style')，
 //      但 element.style.cssText / 逐属性赋值 属 CSSOM 操作，CSP 不拦（已实测验证）。
-// 渲染：真实 DOM(内联样式) → html2canvas 逐元素栅格化 → canvas(2x) → PNG Blob。
-// 图片须先内联为 data URL（content.js 经后台完成），html2canvas 才能直接 drawImage。
+//
+// 语义（blocks 兜底、译文位置、图片下标解析、引用递归、视频封面）已由 shared/ir.js
+// 一次性解决，本发射器只对 node.kind 做哑 switch，只管样式不管语义。
+// main / quote / reply 三种上下文的字号行高、图片网格高度规则、译文块样式逐一保真。
 
 (() => {
-  const XS = (window.__XS = window.__XS || {});
+  const XS = (globalThis.__XS = globalThis.__XS || {});
 
   const CARD_WIDTH = 600;
   const FONT =
@@ -103,29 +105,11 @@
     return grid;
   }
 
-  // 有序内容块：优先用 d.blocks（保留文档顺序，图片不再被甩到末尾），
-  // 无 blocks 时回退旧顺序（文本→图→视频→引用）。
-  function blocksOf(d) {
-    if (d.blocks && d.blocks.length) return d.blocks;
-    const b = [];
-    if (d.segments && d.segments.length) b.push({ type: 'text', segments: d.segments });
-    if (d.photosData && d.photosData.some(Boolean)) b.push({ type: 'photos', all: true });
-    if (d.hasVideo) b.push({ type: 'video' });
-    if (d.quote) b.push({ type: 'quote' });
-    return b;
-  }
-
-  function blockPhotos(d, b) {
-    const arr = d.photosData || [];
-    const picked = b.all ? arr : (b.idx || []).map((i) => arr[i]);
-    return picked.filter(Boolean);
-  }
-
-  function appendVideo(parent, d) {
-    if (d.videoPosterData) {
+  function appendVideoNode(parent, node) {
+    if (node.poster) {
       const v = el('div', 'margin-top:14px;position:relative;border-radius:14px;overflow:hidden;');
       const img = el('img', 'width:100%;display:block;');
-      img.src = d.videoPosterData;
+      img.src = node.poster;
       v.appendChild(img);
       const play = el('div', 'position:absolute;left:50%;top:50%;width:64px;height:64px;margin:-32px 0 0 -32px;border-radius:50%;background:rgba(0,0,0,0.55);');
       play.appendChild(el('div', 'position:absolute;left:24px;top:17px;width:0;height:0;border-left:22px solid #ffffff;border-top:14px solid transparent;border-bottom:14px solid transparent;'));
@@ -137,40 +121,35 @@
     }
   }
 
-  // 正文 + 译文 + 图片 + 视频 + 引用，按块顺序渲染
-  function textBlocks(parent, d, ctx, opts) {
-    let transDone = false;
-    const emitTrans = () => {
-      if (!transDone && d.translation) { parent.appendChild(el('div', ctx.trans, d.translation)); transDone = true; }
-    };
-    for (const b of blocksOf(d)) {
-      if (b.type === 'text') {
-        if (b.segments && b.segments.length) {
-          const t = el('div', ctx.text(!!d.translation));
-          segmentsToNode(t, b.segments);
-          parent.appendChild(t);
-        }
-        emitTrans(); // 译文紧跟第一段正文
-      } else if (b.type === 'photos') {
-        const urls = blockPhotos(d, b);
-        if (urls.length) parent.appendChild(photoGrid(urls, ctx));
-      } else if (b.type === 'video') {
-        appendVideo(parent, d);
-      } else if (b.type === 'quote') {
-        if (d.quote && !(opts && opts.noQuote)) parent.appendChild(quoteBox(d.quote));
+  // IR → DOM 的哑 switch。ctx 决定当前上下文（main/quote/reply）的字号/间距。
+  function emitCardNodes(parent, ir, ctx) {
+    const hasTrans = ir.some((n) => n.kind === 'translation'); // 等价于原 !!d.translation
+    for (const node of ir) {
+      if (node.kind === 'text') {
+        const t = el('div', ctx.text(hasTrans));
+        segmentsToNode(t, node.segments);
+        parent.appendChild(t);
+      } else if (node.kind === 'translation') {
+        parent.appendChild(el('div', ctx.trans, node.text));
+      } else if (node.kind === 'photos') {
+        parent.appendChild(photoGrid(node.urls, ctx));
+      } else if (node.kind === 'video') {
+        appendVideoNode(parent, node);
+      } else if (node.kind === 'quote') {
+        parent.appendChild(quoteBox(node));
       }
     }
-    emitTrans(); // 无正文块时（纯图推文）也要出译文
   }
 
-  function quoteBox(q) {
+  function quoteBox(node) {
+    const q = node.tweet;
     const box = el('div', 'box-sizing:border-box;margin-top:14px;border:1px solid #e1e8ed;border-radius:14px;padding:12px 14px;');
     const head = el('div', 'display:flex;align-items:center;gap:8px;');
     head.appendChild(avatarNode(q, 20));
     head.appendChild(el('span', 'font-size:14px;font-weight:700;line-height:1.3;color:#0f1419;word-break:break-word;', q.name || ''));
     head.appendChild(el('span', 'font-size:12.5px;color:#536471;line-height:1.4;', q.handle || ''));
     box.appendChild(head);
-    textBlocks(box, q, CTX.quote, { noQuote: true });
+    emitCardNodes(box, node.ir, CTX.quote);
     return box;
   }
 
@@ -182,17 +161,9 @@
     line.appendChild(el('b', 'font-weight:700;', d.name || ''));
     line.appendChild(el('span', 'color:#536471;font-weight:400;font-size:12.5px;margin-left:6px;', d.handle || ''));
     body.appendChild(line);
-    textBlocks(body, d, CTX.reply);
+    emitCardNodes(body, XS.buildIR(d), CTX.reply);
     row.appendChild(body);
     return row;
-  }
-
-  function fmtDate(iso) {
-    if (!iso) return '';
-    const d = new Date(iso);
-    if (isNaN(d)) return '';
-    const p = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
   }
 
   XS.buildCard = function (payload) {
@@ -211,7 +182,7 @@
     head.appendChild(el('div', 'margin-left:auto;font-size:24px;font-weight:800;color:#0f1419;font-family:Arial,sans-serif;align-self:flex-start;', '𝕏'));
     root.appendChild(head);
 
-    textBlocks(root, main, CTX.main);
+    emitCardNodes(root, XS.buildIR(main), CTX.main);
 
     if (replies && replies.length) {
       const sec = el('div', 'margin-top:22px;');
@@ -223,53 +194,10 @@
     const foot = el('div', 'margin-top:18px;padding-top:12px;border-top:1px solid #eff3f4;display:flex;justify-content:space-between;gap:16px;font-size:12px;color:#8b98a5;');
     const src = (main.permalink || '').replace(/^https?:\/\//, '');
     foot.appendChild(el('div', 'word-break:break-all;min-width:0;', src ? `原文：${src}` : ''));
-    const dateStr = fmtDate(main.datetime);
+    const dateStr = XS.fmtDate(main.datetime);
     foot.appendChild(el('div', 'flex:none;white-space:nowrap;', `${dateStr ? dateStr + ' · ' : ''}X 转发卡片`));
     root.appendChild(foot);
 
     return root;
-  };
-
-  function waitForImages(rootEl) {
-    const jobs = [...rootEl.querySelectorAll('img')].map((img) =>
-      img.decode ? img.decode().catch(() => {}) : Promise.resolve()
-    );
-    return Promise.all(jobs);
-  }
-
-  XS.renderCardToPng = async function (card) {
-    // html2canvas 逐元素栅格化，避免 SVG foreignObject 方案在 Chromium 下污染画布
-    // （toBlob 抛 "Tainted canvases may not be exported"）。卡片图片均为内联 data URL，不污染。
-    if (typeof window.html2canvas !== 'function') throw new Error('html2canvas 未加载');
-
-    const holder = document.createElement('div');
-    holder.style.cssText = 'position:fixed;left:-99999px;top:0;z-index:-1;background:#ffffff;';
-    holder.appendChild(card);
-    document.body.appendChild(holder);
-
-    try {
-      await waitForImages(card);
-      const h = Math.ceil(card.getBoundingClientRect().height);
-      if (!h) throw new Error('卡片高度测量失败');
-
-      let scale = 2;
-      const MAX_DIM = 16000; // canvas 尺寸上限余量
-      if (h * scale > MAX_DIM) scale = Math.max(1, MAX_DIM / h);
-
-      const canvas = await window.html2canvas(card, {
-        backgroundColor: '#ffffff',
-        scale,
-        width: CARD_WIDTH,
-        useCORS: true,
-        logging: false,
-        imageTimeout: 0,
-      });
-
-      return await new Promise((resolve, reject) => {
-        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('PNG 导出失败'))), 'image/png');
-      });
-    } finally {
-      holder.remove();
-    }
   };
 })();

@@ -21,15 +21,26 @@
   "background": {
     "service_worker": "src/background.js"
   },
+  "//content_scripts_order": "加载顺序是路线A的生命线，须按依赖序：shared(纯逻辑) → extract/redact(数据) → render(发射器) → ui/pipeline → content(编排)。顺序错误 = 白屏级故障。",
   "content_scripts": [
     {
       "matches": ["https://x.com/*", "https://twitter.com/*"],
       "js": [
         "vendor/html2canvas.min.js",
+        "src/shared/config-schema.js",
+        "src/shared/fmt.js",
+        "src/shared/blocks.js",
+        "src/shared/ir.js",
+        "src/shared/rpc.js",
         "src/content/extract.js",
         "src/content/redact.js",
-        "src/content/card.js",
-        "src/content/webpage.js",
+        "src/content/render/emit-card.js",
+        "src/content/render/emit-page.js",
+        "src/content/render/emit-rich.js",
+        "src/content/render/emit-text.js",
+        "src/content/render/raster.js",
+        "src/content/ui/widgets.js",
+        "src/content/pipeline.js",
         "src/content/content.js"
       ],
       "css": ["src/content/content.css"],
@@ -37,7 +48,7 @@
     },
     {
       "matches": ["https://docs.qq.com/*"],
-      "js": ["src/content/txdocs.js"],
+      "js": ["src/shared/fmt.js", "src/content/txdocs.js"],
       "run_at": "document_idle"
     }
   ],

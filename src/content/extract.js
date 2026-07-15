@@ -214,19 +214,7 @@
     return url ? url.replace('_normal.', '_200x200.') : null;
   }
 
-  // 把 "1.2K" / "3.4M" / "1.2万" / "5,432" 解析成数字
-  function parseCount(s) {
-    if (!s) return 0;
-    const t = String(s).trim().replace(/[,，\s]/g, '');
-    const m = t.match(/^([\d.]+)\s*([KMkm万萬])?/);
-    if (!m) return 0;
-    let n = parseFloat(m[1]) || 0;
-    const u = m[2];
-    if (u === 'K' || u === 'k') n *= 1e3;
-    else if (u === 'M' || u === 'm') n *= 1e6;
-    else if (u === '万' || u === '萬') n *= 1e4;
-    return Math.round(n);
-  }
+  // parseCount（"1.2K" / "1.2万" / "5,432" → 数字）已收敛到 shared/fmt.js（XS.parseCount）。
 
   function metric(article, testids) {
     for (const id of testids) {
@@ -235,7 +223,7 @@
         // 优先用 aria-label 里的数字（更稳），退回可见文本
         const aria = btn.getAttribute('aria-label') || '';
         const am = aria.match(/([\d.,]+\s*[KMkm万萬]?)/);
-        return parseCount(am ? am[1] : btn.textContent);
+        return XS.parseCount(am ? am[1] : btn.textContent);
       }
     }
     return 0;
@@ -270,9 +258,8 @@
     // 有序内容块 + 派生的兼容字段（聚合文本 / 扁平图片 / 视频）
     const photos = [];
     const blocks = orderedBlocks(scope, quoteEl, photos);
-    const segments = [];
-    for (const b of blocks) if (b.type === 'text') for (const s of b.segments) pushSeg(segments, s.type, s.text);
-    const plainText = segments.map((s) => s.text).join('');
+    const segments = XS.aggregateSegments(blocks); // 相邻同类型段合并，与旧内联聚合一致
+    const plainText = XS.plainTextOf(segments);
     let hasVideo = false, videoPoster = null;
     for (const b of blocks) if (b.type === 'video') { hasVideo = true; if (b.poster) videoPoster = b.poster; break; }
 
@@ -337,25 +324,6 @@
     return arts[0];
   };
 
-  // 去掉链接和 @/# 后，中文占比低于 25% 才需要翻译
-  XS.needsTranslation = function (text) {
-    const t = (text || '').replace(/https?:\/\/\S+|[@#]\S+/g, '').trim();
-    if (!t) return false;
-    const cjk = (t.match(/[一-鿿㐀-䶿]/g) || []).length;
-    return cjk / t.length < 0.25;
-  };
-
-  // 头像加载失败时的「字母头像」回退：取名字/账号首字 + 稳定配色
-  XS.avatarInitial = function (name, handle) {
-    const s = (name || handle || '').trim().replace(/^@+/, ''); // 账号形如 @bob，去掉前导 @ 再取首字
-    const ch = s ? [...s][0] : '';
-    return ch ? ch.toUpperCase() : '#';
-  };
-  XS.avatarColor = function (seed) {
-    const palette = ['#1d9bf0', '#f4212e', '#00ba7c', '#ffad1f', '#7856ff', '#f91880', '#ff7a00'];
-    let h = 0;
-    const s = seed || '';
-    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-    return palette[h % palette.length];
-  };
+  // needsTranslation / avatarInitial / avatarColor 已收敛到 shared/fmt.js
+  // （XS.needsTranslation / XS.avatarInitial / XS.avatarColor），fmt.js 在 manifest 里先于本脚本加载。
 })();
