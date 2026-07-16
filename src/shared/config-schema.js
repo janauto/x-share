@@ -40,6 +40,8 @@
     publishTarget: 'none', // 'none' | 'gist' | 'custom' | 'cloudbase'
     gistToken: '',
     publishEndpoint: '',
+    // 腾讯文档全自动粘贴（CDP 受信按键；开关在设置页请求/移除 debugger 可选权限）
+    txdocsAutoPaste: false,
     // 更新检测
     updateCheckEnabled: true,
     updateCheckIntervalHours: 6,

@@ -351,6 +351,7 @@
       XS.ui.hideOverlay();
       XS.ui.showWebpagePreview(html, rich, plain, payload.note, {
         mainData: state.mainData, mainId: state.mainId,
+        payload, // 「发布到腾讯文档」用它构造 docx（打码/翻译后的克隆，与网页内容一致）
         cfg: state.cfg, getCfg: () => state.cfg, // getCfg：发布按钮点击时取实时配置
         onClose: onPreviewClose,
       });

@@ -356,6 +356,25 @@
     return XS.buildTitle(name, text);
   }
 
+  // payload → docx 字节的 base64（腾讯文档「导入路径」的载荷）。
+  // emit-docx 产出 { documentXml, media }，media 的 dataUrl 转字节后交 zipdocx 打包。
+  // 任何一步失败返回 null——docx 只是优选路径，构造失败不阻断「粘贴路径」发布。
+  function buildTxdocsDocxB64(payload) {
+    try {
+      if (!payload || !XS.buildDocxParts || !XS.zipdocx) return null;
+      const parts = XS.buildDocxParts(payload);
+      const media = parts.media.map((m) => ({
+        name: m.name,
+        contentType: m.contentType,
+        data: XS.zipdocx.dataUrlToBytes(m.dataUrl).bytes,
+      }));
+      const docx = XS.zipdocx.docxFromXml({ documentXml: parts.documentXml, media });
+      return XS.zipdocx.bytesToBase64(docx);
+    } catch (_) {
+      return null; // 单张媒体转换失败也会走到这（rIdImg 映射不容缺位），整体降级
+    }
+  }
+
   // ---------- 长图预览 · 成图控制台（设计稿 §05 Dialog mock）----------
   // opts: {
   //   blob, note, settings: { ratio, theme, style, showEng, showTime, showFooter },
@@ -533,27 +552,31 @@
         : '复制失败，请改用「下载 HTML」');
     }));
 
-    // 发布到腾讯文档（引导式半自动）：无条件显示，不依赖 publishTarget 配置。
-    // 主通道是系统剪贴板——在用户手势内用 copyRich 把图文写入剪贴板，再存 pending
-    // 任务、开 docs.qq.com/desktop 新标签，由 txdocs.js 挂引导浮层、按状态机推进。
+    // 发布到腾讯文档：无条件显示，不依赖 publishTarget 配置。
+    // 三级降级（txdocs.js 状态机 v2）：①docxB64 走「导入路径」（服务端转换，排版最佳）
+    // ②CDP 受信粘贴（需设置页开启调试权限）③引导式手动 ⌘V。剪贴板始终先写好——
+    // 它是 ②③ 的载荷，也是导入失败后的兜底；docx 构造失败不阻断发布（缺省 docxB64）。
     m.foot.appendChild(btn('sec', '发布到腾讯文档', async () => {
       const ok = await copyRich(rich, plain);
       if (!ok) { m.setStatus('复制失败，无法发布到腾讯文档（图文需先进剪贴板）'); return; }
+      const docxB64 = buildTxdocsDocxB64(opts.payload); // 可能几 MB，unlimitedStorage 兜底
       try {
-        await chrome.storage.local.set({
-          xsTxdocsPending: {
-            html: rich,
-            plain: plain || '',
-            title: txdocsTitle(opts.mainData),
-            ts: Date.now(),
-          },
-        });
+        const pending = {
+          html: rich,
+          plain: plain || '',
+          title: txdocsTitle(opts.mainData),
+          ts: Date.now(),
+        };
+        if (docxB64) pending.docxB64 = docxB64;
+        await chrome.storage.local.set({ xsTxdocsPending: pending });
       } catch (e) {
         m.setStatus('准备失败：' + ((e && e.message) || e));
         return;
       }
       window.open('https://docs.qq.com/desktop', '_blank', 'noopener');
-      m.setStatus('已复制图文，请在新打开的腾讯文档标签按右下角向导操作（登录后按一次 ⌘V 粘贴）');
+      m.setStatus(docxB64
+        ? '已就绪，请在新打开的腾讯文档标签按右下角向导操作（优先自动导入，登录后基本零手动）'
+        : '已复制图文，请在新打开的腾讯文档标签按右下角向导操作（登录后按一次 ⌘V 粘贴）');
     }));
 
     if (cfg.publishTarget !== 'none') {

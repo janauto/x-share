@@ -31,6 +31,7 @@ async function load() {
   $('publishTarget').value = c.publishTarget || 'none';
   $('gistToken').value = c.gistToken || '';
   $('publishEndpoint').value = c.publishEndpoint || '';
+  $('txdocsAutoPaste').checked = !!c.txdocsAutoPaste;
   $('updateCheckEnabled').checked = c.updateCheckEnabled !== false;
   $('updateGithubToken').value = c.updateGithubToken || '';
   await renderUpdateStatus();
@@ -142,8 +143,38 @@ function escapeAttr(value) {
   return escapeHtml(value);
 }
 
+// 腾讯文档全自动粘贴：勾选即请求 debugger 可选权限（须在用户手势里调），
+// 拒绝则回退未勾选；取消勾选则移除权限。状态持久化在 storage key txdocsAutoPaste，
+// 不进 save()（该开关即改即存，避免「保存」按钮把权限状态搞拧）。
+async function toggleTxdocsAutoPaste() {
+  const el = $('txdocsAutoPaste');
+  if (el.checked) {
+    let granted = false;
+    try {
+      granted = await chrome.permissions.request({ permissions: ['debugger'] });
+    } catch (e) {
+      granted = false;
+    }
+    if (!granted) {
+      el.checked = false;
+      await chrome.storage.local.set({ txdocsAutoPaste: false });
+      setStatus('未获得「调试浏览器」权限，全自动粘贴保持关闭', false);
+      return;
+    }
+    await chrome.storage.local.set({ txdocsAutoPaste: true });
+    setStatus('已开启腾讯文档全自动粘贴 ✓', true);
+  } else {
+    try {
+      await chrome.permissions.remove({ permissions: ['debugger'] });
+    } catch (e) { /* 权限本就不在时忽略 */ }
+    await chrome.storage.local.set({ txdocsAutoPaste: false });
+    setStatus('已关闭腾讯文档全自动粘贴，权限已移除 ✓', true);
+  }
+}
+
 $('save').addEventListener('click', save);
 $('test').addEventListener('click', test);
 $('checkUpdate').addEventListener('click', checkUpdate);
 $('updateCheckEnabled').addEventListener('change', save);
+$('txdocsAutoPaste').addEventListener('change', toggleTxdocsAutoPaste);
 load();

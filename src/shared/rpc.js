@@ -41,6 +41,16 @@
 
     // 返回 { ok, url, rawUrl? } | { ok:false, error/transport }
     publish: (html) => send({ type: 'publish', html }),
+
+    // ---- 腾讯文档 CDP 受信粘贴（docs.qq.com 侧调用）----
+    // debugger 权限是否已授予（设置页「腾讯文档全自动粘贴」开关请求）。
+    // 返回 { ok, granted } | { ok:false, ... }
+    canTrustedPaste: () => send({ type: 'txdocsCanTrustedPaste' }),
+
+    // 让后台对「本 tab」发真实 ⌘V/Ctrl+V（后台从 sender.tab.id 取 tabId，
+    // 必须由目标 tab 的内容脚本发起）。调用前须先聚焦编辑器、确保剪贴板已就绪。
+    // 返回 { ok:true } | { ok:false, error:'NO_TAB'|'NO_PERMISSION'|string }
+    trustedPaste: () => send({ type: 'txdocsTrustedPaste' }),
   };
 
   XS.rpc = rpc;

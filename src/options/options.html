@@ -135,6 +135,9 @@
     <div class="hint">💡「生成网页」预览里的<b>「发布到腾讯文档」</b>是<b>免配置</b>的引导式半自动，<b>不需要在这里设置</b>：点它会把图文复制到剪贴板并打开 <code>docs.qq.com</code>，右下角向导带你新建文档、按一次 ⌘V 粘贴、设为「任何人可查看」并取回链接。链接是 <code>docs.qq.com</code> 域、<b>微信内打开最友好</b>（需先登录腾讯文档）。下面这些后端只影响「发布并复制链接」按钮。</div>
   </div>
   <div class="row">
+    <label class="check"><input type="checkbox" id="txdocsAutoPaste"> 腾讯文档全自动粘贴（首次开启会请求"调试浏览器"权限，使用时顶部会出现调试提示条）</label>
+  </div>
+  <div class="row">
     <label for="publishTarget">发布方式</label>
     <select id="publishTarget">
       <option value="none">不发布（只下载 HTML / 复制图文 / 新标签预览）</option>

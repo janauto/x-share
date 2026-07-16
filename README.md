@@ -7,7 +7,7 @@
 - **双语长图（新版「无痕 Seamless」）**：主推文 + 引用 + 勾选评论，原文/译文对照，复制即可粘贴到微信。长图**跟随 X 当前主题**（浅色/暗蓝/纯黑，也可固定），默认走 **X 原生截图风**皮肤——蓝勾徽章、X logo、原生翻译标签「已翻译自 英语」+ 纯文本译文、原生中文时间「下午3:42 · 2026年7月15日」、互动行，力求「就是一张 X 详情页截图」；另可在操作栏切回**阅读排版风**（蓝边译文块、大字号，适合长文/公众号）。
 - **默认自动选热门评论**：进入选择模式即按点赞/转推/回复的热度自动选出前 N 条（默认 10，可在设置/操作栏改，改动会记住），之后仍可手动增减；可在设置里关掉改为纯手动。
 - **生成网页 / 复制图文**：导出自包含单文件 HTML（图片内联、原文/译文切换、移动端友好）；或一键「复制图文」，直接粘贴进公众号 / 语雀 / 飞书 / 腾讯文档 / 印象笔记，由平台生成链接——免服务器、免备案、微信最友好。
-- **发布到腾讯文档（引导式半自动）**：网页预览里一键把图文复制到剪贴板并打开 `docs.qq.com`，右下角向导带你新建文档、粘贴一次、设为「任何人可查看」并取回链接——免服务器免备案、微信内打开最友好（需登录腾讯文档）。
+- **发布到腾讯文档（无感发布，三级降级）**：网页预览里一键打开 `docs.qq.com`，右下角向导自动推进——优先把推文构造成 .docx **自动导入**（服务端转换、排版最佳、零手动）；不成再试 **CDP 受信粘贴**（需在设置页开启「腾讯文档全自动粘贴」调试权限）；最后退到**引导式手动粘贴**（按一次 ⌘V）。随后自动设为「任何人可查看」并取回链接——免服务器免备案、微信内打开最友好（需登录腾讯文档）。
 - **敏感内容打码**：可选按规则（本地正则）或模型（LLM）屏蔽敏感文字，并给图片打马赛克；操作栏会标明当前是「规则」还是「模型」模式，生成后回报打了几处（规则模式没填词表会明确提示未改动，不再静默无效）。
 - **GitHub 更新检测**：定时检查 main 分支最新版本，发现新版时在扩展图标显示 `NEW`，并可在设置页手动检查。
 - **X Articles 基础支持**：识别长文专用的标题/正文容器并提取，避免只生成配图、不带正文；仍不追求正文与图片的精确穿插（见「已知限制」）。
@@ -30,7 +30,7 @@
 - **分享菜单注入（best-effort）**：X 自己的分享下拉菜单里追加「以图片分享」一行（克隆现有菜单项换文案图标，样式原样继承）；X 改版失效时静默消失，FAB 与快捷键不受影响。
 - 下载文件名用 iPhone 风格 `IMG_XXXX.PNG`。
 
-> **需在真实 Chrome 里回归的项**（node 单测 101 例覆盖纯逻辑，下列依赖真实浏览器/DOM）：
+> **需在真实 Chrome 里回归的项**（node 单测 133 例覆盖纯逻辑，下列依赖真实浏览器/DOM）：
 > 1. **长图渲染**：html2canvas 对内联 **SVG 图标**（蓝勾/X logo/互动图标）的栅格化——最需要肉眼确认的一处；异常先看 `chrome://extensions` 的 content 脚本报错。
 > 2. **页面 UI 主题跟随**：在 X 里切换 浅色/暗蓝/纯黑，确认 FAB/操作栏/弹窗/Toast 配色实时跟随。
 > 3. **成图控制台**：改比例/主题/样式/显示各一次，确认预览即时刷新且选择被记住；4:5 等固定比例下确认补白居中略偏上。
@@ -41,6 +41,8 @@
 > 8. **分享菜单注入**：点推文分享图标，看菜单里是否多出「以图片分享」；没有也不算故障（属 best-effort，X 菜单 DOM 易变）。
 > 9. **蓝勾徽章**：认证账号推文确认 `icon-verified` 选择器命中；金/灰徽章判定为 best-effort。
 > 10. **网页主题**：三主题各「生成网页 → 新标签预览」确认着色。
+> 11. **腾讯文档导入路径**：生成网页 →「发布到腾讯文档」，在 `docs.qq.com` 确认向导走「导入文档→设权限→取链接」三步流、显示「已自动导入」、文档里图片纵横比正确（首次接线后建议在 Word/WPS 里也开一次该 docx，目检边框/缩进观感）；导入 20s 未走通应自动降级为粘贴流程，且不产生重复导入。
+> 12. **腾讯文档 CDP 受信粘贴**：设置页开启「腾讯文档全自动粘贴」授权 debugger 后，走粘贴路径确认向导显示「已自动粘贴」且内容真实注入（顶部调试横幅短暂出现属预期）；对已开 DevTools 的标签应 attach 失败并退到手动引导。
 
 ## 快速构建 / 上手
 
@@ -92,7 +94,7 @@ bash scripts/package.sh          # 产物：dist/x-share-v<版本>.zip
    - **手动**：点击想带上的评论即可勾选（再点取消，最多 20 条），或点操作栏「🔥 自动选热门」重选
 4. 操作栏勾选「附中文翻译」「敏感打码（规则/模型）」（是否默认勾选在设置里配），点：
    - **生成长图** → 预览里「复制图片 / 下载 PNG」
-   - **生成网页** → 预览里「复制图文（粘贴到公众号/文档）/ 发布到腾讯文档（引导式半自动）/ 新标签预览 / 下载 HTML / 发布并复制链接」
+   - **生成网页** → 预览里「复制图文（粘贴到公众号/文档）/ 发布到腾讯文档（自动导入优先，三级降级）/ 新标签预览 / 下载 HTML / 发布并复制链接」
 5. 去微信粘贴图片，或把「图文」粘进公众号/文档、转发网页链接；或点「发布到腾讯文档」按右下角向导产出 `docs.qq.com` 链接
 
 内容：主推文（双语对照）、图片（最多 4 张）、引用推文、视频封面（含提示）、勾选的评论（同样双语、附热度数字）、底部原文链接和时间。
@@ -104,9 +106,15 @@ bash scripts/package.sh          # 产物：dist/x-share-v<版本>.zip
 | 发布方式 | 说明 | 大陆可访问 / 微信友好 |
 |---|---|---|
 | **复制图文**（推荐） | 一键复制带内联图片的富文本，直接**粘贴进公众号后台 / 语雀 / 飞书 / 腾讯文档 / 印象笔记**，由平台用自家已备案域名生成链接 | ✅ 免服务器、免备案、微信最友好（公众号可能丢弃内联图片，需在其编辑器重传） |
-| **发布到腾讯文档**（引导式半自动） | 点一下把图文复制到剪贴板并打开 `docs.qq.com`，右下角向导带你新建文档→按一次 ⌘V 粘贴→设为「获得链接的任何人可查看」→自动取回 `docs.qq.com` 链接 | ✅ 免服务器、免备案、微信最友好；需登录腾讯文档、需手动粘贴一次（半自动） |
+| **发布到腾讯文档**（无感发布） | 点一下打开 `docs.qq.com`，右下角向导按「三级降级」自动推进（见下），最终设为「获得链接的任何人可查看」并自动取回 `docs.qq.com` 链接 | ✅ 免服务器、免备案、微信最友好；需登录腾讯文档，最坏情况手动粘贴一次 |
 
-> **为什么是「半自动」而非全自动**：真正的零手动后台导入需要腾讯文档 **OpenAPI + 自建后端换 `access_token`**（见下方路线图条目）；而扩展在会话内合成的 `paste` 事件会被腾讯文档（canvas 自绘编辑器）的 `isTrusted` 校验过滤，无法可靠注入。这属于平台约束，不是本插件缺陷——因此保留「用户按一次 ⌘V」的半自动流。粘贴排版已针对该编辑器改为扁平块级结构（`<p>`/`<blockquote>`/`<img>`，无嵌套 div 与 border-radius），避免碎版。
+> **「发布到腾讯文档」的三级降级**（自动优先、失败逐级退；右下角向导会标明当前用的是哪一级——「已自动导入」/「已自动粘贴」/「请手动粘贴」）：
+>
+> 1. **自动导入 .docx（首选，排版最佳）**：扩展在本地把推文构造成最小合法 .docx（`emit-docx` 发射 OOXML、`zipdocx` 打 ZIP 包，含内联图片与真实纵横比），投给 `docs.qq.com/desktop` 的导入入口（`input[type=file]`），由腾讯文档**服务端**转换成在线文档——零手动、不依赖剪贴板。导入 20 秒内没走通自动降到下一级。
+> 2. **CDP 受信粘贴（需开启开关）**：设置页勾选「腾讯文档全自动粘贴」（首次会请求可选的 `debugger` 权限）后，后台经 `chrome.debugger` 对文档页发**真实 ⌘V/Ctrl+V**（`isTrusted=true`），绕过 canvas 自绘编辑器对合成事件的过滤。粘贴瞬间顶部会短暂出现「正在调试此浏览器」横幅，属预期；粘贴的是当下系统剪贴板内容（向导调用前会重写一次剪贴板）。已开 DevTools 的标签会 attach 失败，自动退到下一级。
+> 3. **引导式手动粘贴（兜底，永远可用）**：图文在点「发布到腾讯文档」时已写入剪贴板，向导提示用户点正文区按一次 ⌘V。粘贴排版已针对该编辑器改为扁平块级结构（`<p>`/`<blockquote>`/`<img>`，无嵌套 div 与 border-radius），避免碎版。
+>
+> 之后的「设为任何人可查看 → 取回链接」各步不分级，一律自动优先、失败退成可视化引导。真正的后台 API 直发需要腾讯文档 **OpenAPI + 自建后端换 `access_token`**（见下方路线图条目），在三级降级已够用的前提下暂不引入。
 | **下载 HTML / 新标签预览** | 零依赖，永远可用；自己决定怎么发 | — |
 | **自定义服务器**（设置里选） | POST `{html}` 到你的端点，期望返回 `{url}` | ✅ 用**香港轻量服务器**或**腾讯云 CloudBase**（免备案默认域名 / HTTP 函数）即可，是自控的境内正解 |
 | **GitHub Gist**（设置里选） | 一个带 token 的 API 调用自动发布，返回 `gistpreview.github.io` 链接 | ❌ github.io 在大陆多被墙、微信常拦，仅适合**非墙内接收者 / 存档** |
@@ -149,22 +157,25 @@ src/shared/                 两栖纯逻辑模块（globalThis.__XS + module.exp
   ratio.js                  比例引擎：智能/4:5/1:1/3:4/9:16 补白计划（视觉重心略偏上，不缩放）
   blocks.js                 有序块模型：blocksOf / blockPhotos / segments 聚合
   ir.js                     payload → RenderIR（唯一一次语义遍历：blocks 兜底、译文位置、引用递归）
-  rpc.js                    content 侧消息信封 + 具名方法（getConfig / fetchImages / translate / redact / publish）
+  rpc.js                    content 侧消息信封 + 具名方法（getConfig / fetchImages / translate / redact / publish / canTrustedPaste / trustedPaste）
+  cdp.js                    CDP 受信按键序列（腾讯文档全自动粘贴的 ⌘V/Ctrl+V 参数构造，纯逻辑）
+  zipdocx.js                DOCX 容器引擎：零依赖 ZIP(STORE)/OPC 打包（crc32 / buildZip / docxFromXml / dataUrlToBytes / bytesToBase64）
 src/background.js           后台：importScripts(shared) + 表驱动 handler；翻译 / 模型打码 / 发布 / 更新检测 / 批量抓图
 src/content/extract.js      DOM 提取 + 热度解析（data-testid 锚点，改版时先查这里）
 src/content/redact.js       敏感内容打码：规则正则、PII、图片像素化
-src/content/render/         四个哑发射器 + 栅格化（只对 IR 节点 switch，只管样式不管语义）
+src/content/render/         五个哑发射器 + 栅格化（只对 IR 节点 switch，只管样式不管语义）
   emit-card.js              IR → 内联样式 DOM（html2canvas 输入；x.com CSP 约束，全走 CSSOM）。
                             双皮肤：native「X 原生截图风」(默认) / reading「阅读排版风」，均由 theme token 驱动
   emit-page.js              IR → 自包含网页 HTML
   emit-rich.js              IR → 「复制图文」富文本片段
   emit-text.js              IR → 纯文本兜底
+  emit-docx.js              IR → OOXML document.xml + media 清单（腾讯文档「导入路径」的 .docx 主体）
   raster.js                 卡片 DOM → html2canvas → PNG Blob
 src/content/ui/widgets.js   页面内 UI 组件：fab / 操作栏 / 弹窗 / 遮罩 / toast / 预览
 src/content/pipeline.js     生成管线：批量抓图内联 → 翻译 → 打码克隆（纯数据进出，经 rpc 走后台）
 src/content/content.js      仅编排：状态 + 事件接线（选择模式、自动选热门、成图控制台、零摩擦通道）
 src/content/share-menu.js   分享菜单注入「以图片分享」（best-effort，克隆 X 菜单项，失败静默）
-src/content/txdocs.js       腾讯文档引导式半自动发布（仅 docs.qq.com 注入，右下角向导浮层）
+src/content/txdocs.js       腾讯文档无感发布状态机（仅 docs.qq.com 注入；docx 导入 / CDP 受信粘贴 / 手动引导三级降级）
 src/content/content.css     页面内 UI 样式
 src/options/options.html    设置页（先引 shared/config-schema.js 再引 options.js）
 src/options/options.js      设置页逻辑：读写 chrome.storage、测试翻译
@@ -177,12 +188,14 @@ server/cloudbase-publish/   境内可访问链接的发布端（CloudBase 云函
 
 ```
 vendor/html2canvas.min.js
-→ src/shared/（config-schema → fmt → theme → blocks → ir → rpc，纯逻辑；ir 依赖 blocks、emit-card 依赖 theme）
+→ src/shared/（config-schema → fmt → theme → ratio → blocks → ir → rpc → zipdocx，纯逻辑；ir 依赖 blocks、emit-card 依赖 theme）
 → extract.js / redact.js（数据层，依赖 shared/fmt、shared/blocks）
 → render/emit-*.js + raster.js（渲染层，依赖 shared/ir、shared/fmt）
-→ ui/widgets.js + pipeline.js（依赖 shared/rpc、shared/fmt、redact.js）
+→ ui/widgets.js + pipeline.js（widgets 依赖 shared/rpc、shared/fmt、emit-docx、shared/zipdocx；pipeline 依赖 shared/rpc、redact.js）
 → content.js（编排层，依赖以上全部）
 ```
+
+docs.qq.com 侧另有一条独立注入链（同样「被依赖者在前」）：`shared/fmt → shared/rpc → shared/zipdocx → content/txdocs.js`；后台 service worker 经 `importScripts` 引 `shared/config-schema.js` 与 `shared/cdp.js`。
 
 顺序错误 = 白屏级故障。新增文件时按「被依赖者在前」插入对应位置。
 
@@ -206,7 +219,8 @@ node --test test/
 - [ ] GraphQL 响应拦截：更稳的数据源，拿到各码率视频地址（网页里可播放视频）
 - [x] 附一个可直接部署的发布端示例（`server/cloudbase-publish/`，CloudBase 云函数，配合「自定义服务器 / CloudBase」）
 - [x] 腾讯文档（引导式半自动）发布：免服务器免备案、微信内打开最友好；复用已登录会话，用户手动粘贴一次，其余（新建/设权限/取链接）自动优先、失败退成可视化引导
-- [ ]（可选，二期）腾讯文档 OpenAPI 发布目标：可做到全自动，但需自建后端换 token + 应用审核；已被上面的会话半自动替代，仅在需要零手动时再评估
+- [x] 腾讯文档无感发布 v2（v0.5.0）：.docx 自动导入（emit-docx + zipdocx，服务端转换、排版最佳）→ CDP 受信粘贴（可选 debugger 权限）→ 引导式手动粘贴，三级降级
+- [ ]（可选，二期）腾讯文档 OpenAPI 发布目标：可做到全自动，但需自建后端换 token + 应用审核；已被上面的三级降级替代，仅在需要绝对零手动时再评估
 - [x] X Articles 基础长文提取（标题 + 正文；图片暂不与正文精确穿插，见「已知限制」）
 - [x] 卡片样式可选（X 原生风 / 阅读排版风）+ 长图/网页跟随 X 三主题（「无痕 Seamless」v0.3.0）
 - [x]（无痕 P1–P3，v0.4.0）页面内 UI 全面原生化（compose 圆钮 / X 工具条 / 22px 勾选圈 / X Dialog / 蓝 Toast / 零 emoji / reduced-motion）；成图控制台（比例·主题·样式·显示，即改即渲染）；比例预设与补白引擎；零摩擦通道（⌥FAB / Shift+S）；分享菜单注入「以图片分享」（best-effort）；去水印；IMG_XXXX.PNG 文件名

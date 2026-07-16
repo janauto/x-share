@@ -16,6 +16,20 @@
     return r && r.ok && Array.isArray(r.dataUrls) ? r.dataUrls : urls.map(() => null);
   }
 
+  // data URL → 自然像素尺寸 { w, h }；空值/解码失败返回 null（不抛错、不阻塞管线）。
+  // docx 发射器（emit-docx）靠它按真实纵横比排图，缺失时会按 1200x675 兜底而拉伸变形。
+  function decodeDims(dataUrl) {
+    return new Promise((resolve) => {
+      if (!dataUrl || typeof Image === 'undefined') { resolve(null); return; }
+      try {
+        const img = new Image();
+        img.onload = () => resolve(img.naturalWidth > 0 ? { w: img.naturalWidth, h: img.naturalHeight } : null);
+        img.onerror = () => resolve(null);
+        img.src = dataUrl;
+      } catch (_) { resolve(null); }
+    });
+  }
+
   // 把一条推文（及其引用）的图片内联成 data URL。
   // 头像两个候选（升级后的 _200x200 与原始 DOM 尺寸）并行抓，取第一个成功的——
   // 结果与旧的「先试升级、失败再回退」一致，只是并行、少一轮消息。
@@ -39,6 +53,15 @@
     const photosData = new Array(photos.length).fill(null);
     for (let i = 0; i < photos.length; i++) photosData[i] = res[k++] || null;
     if (d.videoPoster) d.videoPosterData = res[k++] || null;
+
+    // 补采集像素尺寸：photoDims 与 photosData 严格同下标（失败/解码失败位为 null），
+    // 视频封面同理。供 emit-docx 按真实纵横比排图；Image 解码失败不阻塞管线。
+    const [photoDims, posterDims] = await Promise.all([
+      Promise.all(photosData.map(decodeDims)),
+      decodeDims(d.videoPosterData),
+    ]);
+    d.photoDims = photoDims;
+    d.videoPosterDims = posterDims;
 
     await Promise.all(tasks);
     d.photosData = photosData;

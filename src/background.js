@@ -5,7 +5,8 @@
 // importScripts 路径相对本 worker（src/background.js）所在目录解析，即 src/shared/。
 
 importScripts('shared/config-schema.js');
-const { DEFAULTS, normalizeConfig } = globalThis.__XS;
+importScripts('shared/cdp.js');
+const { DEFAULTS, normalizeConfig, txdocsPasteKeySequence } = globalThis.__XS;
 
 const UPDATE_REPO = {
   owner: 'janauto',
@@ -82,20 +83,95 @@ const HANDLERS = {
     if (!msg.enabled) await setUpdateBadge(false);
     return getUpdateStatus();
   },
+
+  // ---- CDP 受信输入（腾讯文档全自动粘贴）----
+  // 原理：chrome.debugger（CDP）注入的按键 isTrusted=true，会触发真实的系统
+  // 剪贴板粘贴，绕过 docs.qq.com 编辑器对合成事件的 isTrusted 过滤。
+  // 代价：attach 期间 Chrome 会显示「"X 转发卡片"正在调试此浏览器」横幅，属预期。
+  // debugger 权限是 optional_permissions，由设置页的「腾讯文档全自动粘贴」开关按需请求。
+  txdocsCanTrustedPaste: async () => ({
+    granted: await chrome.permissions.contains({ permissions: ['debugger'] }),
+  }),
+
+  txdocsTrustedPaste: async (_msg, sender) => {
+    const tabId = sender && sender.tab && sender.tab.id;
+    if (typeof tabId !== 'number') return { error: 'NO_TAB' };
+    const granted = await chrome.permissions.contains({ permissions: ['debugger'] });
+    if (!granted || !chrome.debugger) return { error: 'NO_PERMISSION' };
+    return txdocsTrustedPasteViaCdp(tabId);
+  },
 };
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const handler = msg && HANDLERS[msg.type];
   (async () => {
     try {
       if (!handler) { sendResponse({ error: 'unknown message type' }); return; }
-      sendResponse(await handler(msg));
+      sendResponse(await handler(msg, sender));
     } catch (e) {
       sendResponse({ error: String((e && e.message) || e) });
     }
   })();
   return true; // 异步 sendResponse
 });
+
+// ---- chrome.debugger 是回调 API，包一层 Promise（统一检查 chrome.runtime.lastError） ----
+
+function debuggerAttach(target, version) {
+  return new Promise((resolve, reject) => {
+    chrome.debugger.attach(target, version, () => {
+      const err = chrome.runtime.lastError;
+      if (err) reject(new Error(err.message));
+      else resolve();
+    });
+  });
+}
+
+function debuggerDetach(target) {
+  return new Promise((resolve, reject) => {
+    chrome.debugger.detach(target, () => {
+      const err = chrome.runtime.lastError;
+      if (err) reject(new Error(err.message));
+      else resolve();
+    });
+  });
+}
+
+function debuggerSendCommand(target, method, params) {
+  return new Promise((resolve, reject) => {
+    chrome.debugger.sendCommand(target, method, params, (result) => {
+      const err = chrome.runtime.lastError;
+      if (err) reject(new Error(err.message));
+      else resolve(result);
+    });
+  });
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// attach → 按平台发 ⌘V / Ctrl+V（rawKeyDown + keyUp，见 shared/cdp.js）→ 等
+// 页面消化粘贴（150ms）→ detach。任何一步失败都 detach 兜底并返回 { error }。
+async function txdocsTrustedPasteViaCdp(tabId) {
+  const target = { tabId };
+  let attached = false;
+  try {
+    await debuggerAttach(target, '1.3');
+    attached = true;
+    const events = txdocsPasteKeySequence(self.navigator.userAgent);
+    for (const ev of events) {
+      await debuggerSendCommand(target, 'Input.dispatchKeyEvent', ev);
+    }
+    await sleep(150);
+    await debuggerDetach(target);
+    attached = false;
+    return { ok: true };
+  } catch (e) {
+    if (attached) {
+      try { await debuggerDetach(target); } catch (_) { /* 兜底 detach 失败可忽略 */ }
+    }
+    return { error: String((e && e.message) || e) };
+  }
+}
 
 const IMG_MIME = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif'];
 

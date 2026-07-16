@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "X 转发卡片",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "把推文（含中文翻译和你勾选的评论）生成双语长图或网页，方便转发到微信。长图跟随 X 主题、X 原生截图风皮肤、比例预设与零摩擦快捷通道。",
   "icons": {
     "16": "icons/icon16.png",
@@ -9,6 +9,8 @@
     "128": "icons/icon128.png"
   },
   "permissions": ["storage", "alarms", "unlimitedStorage"],
+  "//optional_permissions": "debugger 仅供「腾讯文档全自动粘贴」（CDP 受信按键）使用；放 optional 避免安装时出现吓人的权限提示，首次在设置页开启该功能时才请求。",
+  "optional_permissions": ["debugger"],
   "host_permissions": [
     "https://pbs.twimg.com/*",
     "https://video.twimg.com/*",
@@ -34,12 +36,14 @@
         "src/shared/blocks.js",
         "src/shared/ir.js",
         "src/shared/rpc.js",
+        "src/shared/zipdocx.js",
         "src/content/extract.js",
         "src/content/redact.js",
         "src/content/render/emit-card.js",
         "src/content/render/emit-page.js",
         "src/content/render/emit-rich.js",
         "src/content/render/emit-text.js",
+        "src/content/render/emit-docx.js",
         "src/content/render/raster.js",
         "src/content/ui/widgets.js",
         "src/content/pipeline.js",
@@ -51,7 +55,12 @@
     },
     {
       "matches": ["https://docs.qq.com/*"],
-      "js": ["src/shared/fmt.js", "src/content/txdocs.js"],
+      "js": [
+        "src/shared/fmt.js",
+        "src/shared/rpc.js",
+        "src/shared/zipdocx.js",
+        "src/content/txdocs.js"
+      ],
       "run_at": "document_idle"
     }
   ],
